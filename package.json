@@ -1,7 +1,7 @@
 {
-  "name": "skyhop",
-  "version": "0.2.0",
-  "description": "A minimal browser-in-a-browser web proxy (Scramjet + Wisp + libcurl)",
+  "name": "cloudora",
+  "version": "0.3.0",
+  "description": "Cloudora: a self-hosted browser-in-a-browser (Scramjet + Wisp + libcurl)",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",

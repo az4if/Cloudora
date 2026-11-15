@@ -12,7 +12,7 @@ const BLOCK = ("doubleclick.net googlesyndication.com googleadservices.com googl
   "mgid.com revcontent.com zedo.com adroll.com bluekai.com demdex.net krxd.net everesttech.net mathtag.com rlcdn.com tapad.com").split(" ");
 
 const idb = (mode, fn) => new Promise((res, rej) => {
-  const o = indexedDB.open("skyhop", 1);
+  const o = indexedDB.open("cloudora", 1);
   o.onupgradeneeded = () => o.result.createObjectStore("s");
   o.onerror = () => rej(o.error);
   o.onsuccess = () => { const r = fn(o.result.transaction("s", mode).objectStore("s")); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); };
@@ -20,7 +20,7 @@ const idb = (mode, fn) => new Promise((res, rej) => {
 let adblock = true;
 const ready = idb("readonly", (s) => s.get("adblock")).then((v) => { if (v !== undefined) adblock = v; }).catch(() => {});
 self.addEventListener("message", (e) => {
-  if (e.data && e.data.skyhop === "adblock") { adblock = !!e.data.on; idb("readwrite", (s) => s.put(adblock, "adblock")).catch(() => {}); }
+  if (e.data && e.data.cloudora === "adblock") { adblock = !!e.data.on; idb("readwrite", (s) => s.put(adblock, "adblock")).catch(() => {}); }
 });
 
 const isAd = (url) => {
@@ -29,7 +29,7 @@ const isAd = (url) => {
     return BLOCK.some((d) => host === d || host.endsWith("." + d));
   } catch { return false; }
 };
-async function nested(event) { // is the request coming from inside a proxied page (not Skyhop's own tab frame)?
+async function nested(event) { // is the request coming from inside a proxied page (not Cloudora's own tab frame)?
   const c = event.clientId && (await self.clients.get(event.clientId));
   return !!c && c.url.includes(scramjet.config.prefix || "/scramjet/");
 }

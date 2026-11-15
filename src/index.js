@@ -20,7 +20,7 @@ Object.assign(wisp.options, {
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json", ".wasm": "application/wasm",
-  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".map": "application/json",
+  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".map": "application/json", ".webmanifest": "application/manifest+json",
 };
 // URL prefix -> folder on disk (first match wins, "/" last)
 const MOUNTS = [["/scram/", scramjetPath], ["/libcurl/", libcurlPath], ["/baremux/", baremuxPath], ["/", publicPath]];
@@ -59,13 +59,39 @@ async function anilist(req, res) {
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"errors":[{"message":"upstream error"}]}'); }
 }
-async function image(res, u) { // cover art only, from anilist.co hosts
+// Generic cached JSON relay (MangaDex / Internet Archive)
+async function relay(res, url, ttl = 300e3) {
+  const json = { "Content-Type": "application/json" };
+  try {
+    const hit = cache.get(url);
+    if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
+    const r = await fetch(url, { headers: { "User-Agent": "Cloudora/0.3 (self-hosted proxy browser)", Accept: "application/json" } });
+    const data = await r.text();
+    if (r.ok && ttl) { if (cache.size > 300) cache.clear(); cache.set(url, { data, exp: Date.now() + ttl }); }
+    res.writeHead(r.status, json); res.end(data);
+  } catch { res.writeHead(502, json); res.end('{"result":"error","errors":[{"title":"upstream error"}]}'); }
+}
+const MANGADEX = process.env.MANGADEX_URL || "https://api.mangadex.org";
+const ARCHIVE = process.env.ARCHIVE_URL || "https://archive.org";
+const MD_PATH = /^\/(manga|manga\/[0-9a-f-]{36}|manga\/[0-9a-f-]{36}\/feed|at-home\/server\/[0-9a-f-]{36})$/;
+function archive(res, q) {
+  const base = "mediatype:movies AND (collection:feature_films OR collection:animationandcartoons OR collection:classic_tv)";
+  const clean = q.replace(/[^\w\s'-]/g, " ").trim();
+  const p = new URLSearchParams({ q: clean ? `(${clean}) AND ${base}` : base, rows: "30", output: "json", sort: "downloads desc" });
+  for (const f of ["identifier", "title", "year"]) p.append("fl[]", f);
+  return relay(res, ARCHIVE + "/advancedsearch.php?" + p, 600e3);
+}
+
+// Cover/thumbnail art only, from these hosts
+const IMG_HOSTS = ["anilist.co", "mangadex.org", "archive.org"];
+const okHost = (h) => IMG_HOSTS.some((d) => h === d || h.endsWith("." + d));
+async function image(res, u) {
   try {
     const t = new URL(u);
-    if (t.protocol !== "https:" || !(t.hostname === "anilist.co" || t.hostname.endsWith(".anilist.co"))) throw 0;
-    const r = await fetch(t, { redirect: "error" });
+    if (t.protocol !== "https:" || !okHost(t.hostname)) throw 0;
+    const r = await fetch(t);
     const type = r.headers.get("content-type") || "";
-    if (!r.ok || !type.startsWith("image/")) throw 0;
+    if (!r.ok || !type.startsWith("image/") || !okHost(new URL(r.url).hostname)) throw 0;
     res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
     res.end(Buffer.from(await r.arrayBuffer()));
   } catch { res.writeHead(404); res.end(); }
@@ -77,6 +103,12 @@ const server = createServer((req, res) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
+  if (req.method === "GET" && u.pathname.startsWith("/api/md/")) {
+    const p = u.pathname.slice(7);
+    if (MD_PATH.test(p)) return relay(res, MANGADEX + p + u.search, p.startsWith("/at-home") ? 0 : 300e3);
+    res.writeHead(404); return res.end();
+  }
+  if (u.pathname === "/api/archive" && req.method === "GET") return archive(res, (u.searchParams.get("q") || "").slice(0, 100));
   if (u.pathname === "/img" && req.method === "GET") return image(res, u.searchParams.get("u") || "");
   let file = null;
   try { file = findFile(decodeURIComponent(new URL(req.url, "http://x").pathname)); } catch {}
@@ -95,6 +127,6 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const port = Number(process.env.PORT) || 8080;
-server.listen(port, "0.0.0.0", () => console.log(`Skyhop running: http://localhost:${port}`));
+server.listen(port, "0.0.0.0", () => console.log(`Cloudora running: http://localhost:${port}`));
 
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => server.close(() => process.exit(0)));

@@ -1,17 +1,21 @@
-# Skyhop
+# Cloudora
 
-Skyhop is a tiny browser-in-a-browser: tabs, address bar, back/forward/reload. Pages are fetched
+Cloudora is a tiny browser-in-a-browser: tabs, address bar, back/forward/reload. Pages are fetched
 by **your server**, not your device, and rendered with Scramjet.
 
 ## Features
-- Tabs, bookmarks (star button), 4 themes, search engine picker, cursor-following glow
+- Tabs, bookmarks (star), cursor-following glow on search bars and cards
+- **Themes:** Auto / Light / Dark (true black) modes (sun/moon button in the toolbar), 8 color presets,
+  and a color wheel + exact color picker in Settings for any color you like
 - **Ad & tracker blocker** (Settings > Privacy): the service worker blocks known ad/tracker
-  domains (list in `public/sw.js`, add your own) and hides common ad boxes. It is lighter than
-  uBlock Origin and will not remove in-stream video ads (e.g. YouTube).
-- **Anime / Manga** pages: trending, popular, search and details from AniList, with links to
-  official streaming/reading sites that open in a Skyhop tab. Needs the server to reach
-  graphql.anilist.co and *.anilist.co (covers are fetched through `/img`).
+  domains (list in `public/sw.js`) and hides common ad boxes. Lighter than uBlock Origin;
+  it will not remove in-stream video ads (e.g. YouTube).
+- **Anime:** trending, popular, search and details from AniList, with official "where to watch" links
+- **Manga:** browse, search and **read in the app** using the public MangaDex API
+- **Watch:** free public-domain films, cartoons and classic TV from the Internet Archive
 - Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
+- The server needs outbound access to graphql.anilist.co, api.mangadex.org, archive.org and their
+  image hosts. Manga page images load straight from MangaDex's servers into the visitor's browser.
 
 ## Run
     npm install
@@ -22,7 +26,7 @@ Service workers need **https** (localhost is exempt), so put it behind a domain 
 work: the Wisp tunnel needs a live server.
 
 ## Deploying
-Skyhop needs a **live Node server** (for the Wisp websocket tunnel), so static hosts like Vercel,
+Cloudora needs a **live Node server** (for the Wisp websocket tunnel), so static hosts like Vercel,
 Netlify and GitHub Pages won't work. Use Render, Railway, Fly.io or a VPS.
 
 On Render: New > Web Service, connect the repo, Build Command `npm install` (or Render's default `yarn install && yarn build`), Start Command `npm start`.
