@@ -25,7 +25,7 @@ work: the Wisp tunnel needs a live server.
 Skyhop needs a **live Node server** (for the Wisp websocket tunnel), so static hosts like Vercel,
 Netlify and GitHub Pages won't work. Use Render, Railway, Fly.io or a VPS.
 
-On Render: New > Web Service, connect the repo, Build Command `npm install`, Start Command `npm start`.
+On Render: New > Web Service, connect the repo, Build Command `npm install` (or Render's default `yarn install && yarn build`), Start Command `npm start`.
 Add your domain under Settings > Custom Domains (https is automatic).
 Free instances sleep after ~15 min idle, so the first visit afterward is slow.
 
