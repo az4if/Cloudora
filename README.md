@@ -16,7 +16,7 @@ Skyhop needs a **live server** for the Wisp websocket tunnel. Vercel (and Netlif
 can only host the static front end, so use one of these:
 
 **A) All-in-one (easiest):** deploy the whole repo to Render, Railway, Fly.io or a VPS.
-Build: `npm install`, start: `npm start`. Done, `public/config.js` stays as is.
+Build: `npm install`, start: `npm start` (no framework needed, plain Node). Done, `public/config.js` stays as is.
 
 **B) Split:** keep the UI on Vercel and run the server elsewhere.
 1. Deploy this repo to Render/Railway/Fly as in (A). Its URL is your tunnel.
