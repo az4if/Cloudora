@@ -54,7 +54,7 @@ async function boot() {
   await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const conn = new BareMux.BareMuxConnection("/baremux/worker.js");
-  const wisp = (window.SKYHOP && window.SKYHOP.wisp) || (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wisp/";
+  const wisp = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wisp/";
   if ((await conn.getTransport()) !== "/libcurl/index.mjs") await conn.setTransport("/libcurl/index.mjs", [{ websocket: wisp }]);
   ready = true;
   el.status.textContent = "Connected";

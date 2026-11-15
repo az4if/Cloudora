@@ -12,16 +12,12 @@ Service workers need **https** (localhost is exempt), so put it behind a domain 
 work: the Wisp tunnel needs a live server.
 
 ## Deploying
-Skyhop needs a **live server** for the Wisp websocket tunnel. Vercel (and Netlify, GitHub Pages)
-can only host the static front end, so use one of these:
+Skyhop needs a **live Node server** (for the Wisp websocket tunnel), so static hosts like Vercel,
+Netlify and GitHub Pages won't work. Use Render, Railway, Fly.io or a VPS.
 
-**A) All-in-one (easiest):** deploy the whole repo to Render, Railway, Fly.io or a VPS.
-Build: `npm install`, start: `npm start` (no framework needed, plain Node). Done, `public/config.js` stays as is.
-
-**B) Split:** keep the UI on Vercel and run the server elsewhere.
-1. Deploy this repo to Render/Railway/Fly as in (A). Its URL is your tunnel.
-2. Edit `public/config.js`: `window.SKYHOP = { wisp: "wss://YOUR-SERVER/wisp/" };`
-3. Vercel picks up `vercel.json` (runs `npm run build`, serves `public/`).
+On Render: New > Web Service, connect the repo, Build Command `npm install`, Start Command `npm start`.
+Add your domain under Settings > Custom Domains (https is automatic).
+Free instances sleep after ~15 min idle, so the first visit afterward is slow.
 
 ## How it works
     your browser ── service worker (Scramjet rewrites pages) ── bare-mux + libcurl
