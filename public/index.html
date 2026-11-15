@@ -16,6 +16,7 @@
   <aside id="sidebar">
     <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 17c3.5-10 12.5-10 16 0"/><circle cx="12" cy="6.5" r="1.6" fill="currentColor"/></svg>Skyhop</div>
     <button id="new-tab" data-ic="plus">New tab</button>
+    <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button></nav>
     <div id="tablist"></div>
     <div class="side-foot"><span id="status">Connecting…</span><button class="ghost" id="open-settings" title="Settings" data-ic="sliders"></button></div>
   </aside>
@@ -25,7 +26,7 @@
       <button type="button" class="ghost" id="back" title="Back" data-ic="back"></button>
       <button type="button" class="ghost" id="forward" title="Forward" data-ic="forward"></button>
       <button type="button" class="ghost" id="reload" title="Reload" data-ic="reload"></button>
-      <input id="address" placeholder="Search or enter address" spellcheck="false" />
+      <div class="pill glow"><input id="address" placeholder="Search or enter address" spellcheck="false" /></div>
       <button type="button" class="ghost" id="star" title="Bookmark" data-ic="star"></button>
     </form>
     <div id="stage">
@@ -34,16 +35,28 @@
         <div class="word">Skyhop</div>
         <div class="tag">Hop past the walls.</div>
         <div id="notice" hidden></div>
-        <form id="home-form"><input id="home-q" placeholder="Search the web or type a URL" spellcheck="false" /></form>
+        <form id="home-form" class="pill glow"><input id="home-q" placeholder="Search the web or type a URL" spellcheck="false" /></form>
         <div class="tiles" id="tiles"></div>
+      </section>
+      <section id="discover" hidden>
+        <header><h2 id="d-title"></h2><form id="d-form" class="pill glow"><input id="d-q" placeholder="Search…" spellcheck="false" /></form></header>
+        <div id="d-body"></div>
+        <div id="d-detail" hidden></div>
       </section>
     </div>
   </main>
   <div id="settings" hidden>
     <div class="card">
       <div class="row"><b>Settings</b><button class="ghost" id="close-settings" data-ic="close"></button></div>
-      <label>Theme</label><div id="themes" class="swatches"></div>
-      <label for="engine">Search engine</label><select id="engine"></select>
+      <h4>Appearance</h4>
+      <div class="swatches" id="themes"></div>
+      <div class="set"><div><b>Cursor glow</b><small>Search bars and cards light up near your cursor</small></div><button class="switch" data-k="glow" role="switch"></button></div>
+      <h4>Search</h4>
+      <div class="set"><b>Search engine</b><select id="engine"></select></div>
+      <h4>Privacy</h4>
+      <div class="set"><div><b>Block ads &amp; trackers</b><small>Blocks common ad networks and hides ad boxes</small></div><button class="switch" data-k="adblock" role="switch"></button></div>
+      <div class="set"><b>Bookmarks</b><button class="btn" id="clear-bm">Clear</button></div>
+      <small class="foot">Skyhop 0.2</small>
     </div>
   </div>
 </div>

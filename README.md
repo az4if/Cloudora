@@ -3,6 +3,16 @@
 Skyhop is a tiny browser-in-a-browser: tabs, address bar, back/forward/reload. Pages are fetched
 by **your server**, not your device, and rendered with Scramjet.
 
+## Features
+- Tabs, bookmarks (star button), 4 themes, search engine picker, cursor-following glow
+- **Ad & tracker blocker** (Settings > Privacy): the service worker blocks known ad/tracker
+  domains (list in `public/sw.js`, add your own) and hides common ad boxes. It is lighter than
+  uBlock Origin and will not remove in-stream video ads (e.g. YouTube).
+- **Anime / Manga** pages: trending, popular, search and details from AniList, with links to
+  official streaming/reading sites that open in a Skyhop tab. Needs the server to reach
+  graphql.anilist.co and *.anilist.co (covers are fetched through `/img`).
+- Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
+
 ## Run
     npm install
     npm start          # http://localhost:8080  (set PORT to change)

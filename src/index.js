@@ -38,10 +38,46 @@ function findFile(pathname) {
   return null;
 }
 
+// --- AniList data for the Anime/Manga pages (cached, same-origin so the browser needs no CORS) ---
+const ANILIST = process.env.ANILIST_URL || "https://graphql.anilist.co";
+const cache = new Map();
+async function readBody(req, max = 8192) {
+  const parts = []; let n = 0;
+  for await (const c of req) { n += c.length; if (n > max) throw new Error("too large"); parts.push(c); }
+  return Buffer.concat(parts);
+}
+async function anilist(req, res) {
+  const json = { "Content-Type": "application/json" };
+  try {
+    const body = await readBody(req), key = body.toString();
+    const hit = cache.get(key);
+    if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
+    JSON.parse(key);
+    const r = await fetch(ANILIST, { method: "POST", headers: { ...json, Accept: "application/json" }, body });
+    const data = await r.text();
+    if (r.ok) { if (cache.size > 300) cache.clear(); cache.set(key, { data, exp: Date.now() + 5 * 60e3 }); }
+    res.writeHead(r.status, json); res.end(data);
+  } catch { res.writeHead(502, json); res.end('{"errors":[{"message":"upstream error"}]}'); }
+}
+async function image(res, u) { // cover art only, from anilist.co hosts
+  try {
+    const t = new URL(u);
+    if (t.protocol !== "https:" || !(t.hostname === "anilist.co" || t.hostname.endsWith(".anilist.co"))) throw 0;
+    const r = await fetch(t, { redirect: "error" });
+    const type = r.headers.get("content-type") || "";
+    if (!r.ok || !type.startsWith("image/")) throw 0;
+    res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
+    res.end(Buffer.from(await r.arrayBuffer()));
+  } catch { res.writeHead(404); res.end(); }
+}
+
 const server = createServer((req, res) => {
   // Required so the proxy can use SharedArrayBuffer
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  const u = new URL(req.url, "http://x");
+  if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
+  if (u.pathname === "/img" && req.method === "GET") return image(res, u.searchParams.get("u") || "");
   let file = null;
   try { file = findFile(decodeURIComponent(new URL(req.url, "http://x").pathname)); } catch {}
   if (!file || (req.method !== "GET" && req.method !== "HEAD")) {
