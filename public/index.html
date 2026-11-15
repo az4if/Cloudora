@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skyhop</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="/scram/scramjet.all.js"></script>
+  <script src="/baremux/index.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div id="tabs"><button id="new-tab" title="New tab">+</button></div>
+  <form id="bar">
+    <button type="button" id="back" title="Back">&larr;</button>
+    <button type="button" id="forward" title="Forward">&rarr;</button>
+    <button type="button" id="reload" title="Reload">&#x21bb;</button>
+    <input id="address" placeholder="Search or enter address" autocomplete="off" spellcheck="false" />
+  </form>
+  <div id="status">Starting…</div>
+  <div id="views"></div>
+</body>
+</html>
