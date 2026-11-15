@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "description": "A minimal browser-in-a-browser web proxy (Scramjet + Wisp + libcurl)",
   "type": "module",
-  "scripts": { "start": "node src/index.js" },
+  "scripts": { "start": "node src/index.js",
+    "build": "node scripts/copy-assets.mjs" },
   "engines": { "node": ">=18" },
   "dependencies": {
     "@fastify/static": "^9.0.0",
