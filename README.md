@@ -7,9 +7,17 @@ by **your server**, not your device, and rendered with Scramjet.
 - Tabs, bookmarks (star), cursor-following glow on search bars and cards
 - **Themes:** Auto / Light / Dark (true black) modes (sun/moon button in the toolbar), 8 color presets,
   and a color wheel + exact color picker in Settings for any color you like
-- **Ad & tracker blocker** (Settings > Privacy): the service worker blocks known ad/tracker
-  domains (list in `public/sw.js`) and hides common ad boxes. Lighter than uBlock Origin;
-  it will not remove in-stream video ads (e.g. YouTube).
+- **Ad & tracker blocker** (shield button in the toolbar + Settings > Privacy): runs the real
+  EasyList, EasyPrivacy and uBlock Origin filter lists (~121k network rules, ~31k element-hiding rules,
+  ~10k scriptlet rules). The service worker blocks requests (with uBO-style redirect stubs), injects the
+  hiding CSS and scriptlets before the page's own scripts run, and guards against popups that have no
+  user click. The shield shows how many requests were blocked on the current page and lets you pause
+  blocking per site. Not covered: procedural cosmetic filters (`:has-text`...), HTML filtering, `removeparam`,
+  and in-stream video ads (YouTube).
+- **Browser:** history (Alt+H), address-bar suggestions (bookmarks, history, live search suggestions), pin /
+  duplicate / drag-reorder tabs, reopen closed tab (Alt+Shift+T), restore tabs on start, find in page (Alt+F),
+  zoom (Alt +/-/0), Alt+1..9 to switch tabs, Alt+D bookmark, tab right-click menu. Shortcuts also work while a
+  page has focus.
 - **Anime:** trending, popular, search and details from AniList, official "where to watch" links, and a **built-in player** (HLS/MP4, subtitles, speed, resume, auto-next) when you configure a source API (below)
 - **Manga:** browse, search and read in the app using the public MangaDex API. Community translations are labeled **Unofficial**; publisher links and official chapters are labeled **Official**
 - Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
@@ -61,3 +69,18 @@ Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expect
 
 Each source may include `"official": true` (shows an **Official** badge; the default is **Unofficial**). Set `STREAM_API_OFFICIAL=1` if your whole API is an official one. `type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
 cross-site playback (CORS). With no `STREAM_API` set, anime pages show official links only.
+
+## Ad-block lists
+`adblock-src/` holds the raw lists (taken from uBlock Origin 1.75.0's bundled assets) and
+`scripts/build-filters.mjs` compiles them into `public/adblock/` (`net.json`, `cosmetic.json`, `generic.css`,
+redirect stubs). Already built; re-run when you change lists:
+
+    npm run build-filters                         # recompile adblock-src/*.txt
+    npm run update-filters                        # download fresh copies first (needs internet)
+    node scripts/build-filters.mjs --extra=my-rules.txt   # add your own rules (ABP/uBO syntax)
+
+`npm test` runs the engine tests. Filter lists are © their authors (GPLv3 / CC BY-SA).
+
+## Local testing
+`CLOUDORA_ALLOW_LOCAL=1 npm start` lets the tunnel reach 127.0.0.1/LAN so you can test against a local page.
+Never set it on a public server.

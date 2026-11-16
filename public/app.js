@@ -25,31 +25,39 @@ const ICONS = {
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  shield: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6z", shieldoff: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6zM4 4l16 16",
+  history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2", dots: "M5 12h.01M12 12h.01M19 12h.01", pin: "M12 17v5M9 3h6l-1 6 3 3H7l3-3z",
+  find: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", up: "M18 15l-6-6-6 6", down: "M6 9l6 6 6-6", search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
 };
 const ic = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[n]}"/></svg>`;
 document.querySelectorAll("[data-ic]").forEach((b) => b.insertAdjacentHTML("afterbegin", ic(b.dataset.ic)));
 
 const el = { app: $("#app"), tabs: $("#tablist"), views: $("#views"), home: $("#home"), addr: $("#address"),
   tiles: $("#tiles"), disc: $("#discover"), notice: $("#notice"), status: $("#status"), star: $("#star") };
-let tabs = [], active = null, scramjet = null, ready = false, nextId = 1;
+let tabs = [], active = null, scramjet = null, ready = false, nextId = 1, dragTab = null;
+const closed = []; // recently closed tabs, for Reopen closed tab
 let engine = db.get("engine", "DuckDuckGo");
-const prefs = Object.assign({ adblock: true, glow: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
+const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
-const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga" };
+const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga", history: "History" };
 const AD_CSS = 'ins.adsbygoogle,.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.ad-slot,.ad-wrapper,.advertisement,.sponsored-ad,.taboola,[id^="taboola"],[class*="outbrain"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adnxs"],iframe[src*="adsystem"],#ad,#ads,.ads{display:none!important}';
-function applyCosmetics(frame) {
+const rawHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+const paused = (u) => { const h = rawHost(u); return !!h && prefs.allow.some((d) => h === d || h.endsWith("." + d)); };
+// The service worker injects the full filter lists into every page. This is only a safety net for the rare page it could not inject into.
+function applyCosmetics(frame, url) {
   try {
     const d = frame.contentDocument; if (!d) return;
     const old = d.getElementById("cloudora-adblock");
-    if (!prefs.adblock) return old && old.remove();
-    if (old) return;
+    if (!prefs.adblock || (url && paused(url))) return old && old.remove();
+    if (old || d.getElementById("cloudora-scriptlets")) return;
     const s = d.createElement("style"); s.id = "cloudora-adblock"; s.textContent = AD_CSS;
     (d.head || d.documentElement).appendChild(s);
   } catch {}
 }
-const syncAdblock = () => navigator.serviceWorker.ready.then((r) => r.active && r.active.postMessage({ cloudora: "adblock", on: prefs.adblock })).catch(() => {});
+const swPost = (msg) => navigator.serviceWorker.ready.then((r) => r.active && r.active.postMessage(msg)).catch(() => {});
+const syncAdblock = () => { swPost({ cloudora: "adblock", on: prefs.adblock }); swPost({ cloudora: "allow", hosts: prefs.allow }); };
 
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
 function toUrl(q) {
@@ -80,10 +88,22 @@ async function boot() {
 }
 
 function newTab(url, page = "home") {
-  const tab = { id: nextId++, url: "", page, title: PAGE_TITLES[page], frame: null, loading: false, row: document.createElement("div") };
+  const tab = { id: nextId++, url: "", page, title: PAGE_TITLES[page], frame: null, loading: false, pinned: false, zoom: 1, blocked: 0, hits: [], row: document.createElement("div") };
   tab.row.className = "tab";
+  tab.row.draggable = true;
   tab.row.addEventListener("click", () => select(tab));
   tab.row.addEventListener("auxclick", (e) => { if (e.button === 1) closeTab(tab); });
+  tab.row.addEventListener("contextmenu", (e) => { e.preventDefault(); tabMenu(e.clientX, e.clientY, tab); });
+  tab.row.addEventListener("dragstart", (e) => { dragTab = tab; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(tab.id)); });
+  tab.row.addEventListener("dragover", (e) => { if (dragTab && dragTab !== tab) { e.preventDefault(); tab.row.classList.add("dragover"); } });
+  tab.row.addEventListener("dragleave", () => tab.row.classList.remove("dragover"));
+  tab.row.addEventListener("drop", (e) => {
+    e.preventDefault(); tab.row.classList.remove("dragover");
+    if (!dragTab || dragTab === tab) return;
+    tabs.splice(tabs.indexOf(dragTab), 1); tabs.splice(tabs.indexOf(tab), 0, dragTab);
+    dragTab.pinned = tab.pinned; tabs.forEach((t) => el.tabs.appendChild(t.row)); dragTab = null; render(); saveSession();
+  });
+  tab.row.addEventListener("dragend", () => { dragTab = null; });
   tabs.push(tab); el.tabs.appendChild(tab.row);
   select(tab);
   if (url) go(tab, url); else if (page === "home") $("#home-q").focus();
@@ -94,12 +114,17 @@ function ensureFrame(tab) {
   if (tab.frame) return tab.frame;
   const f = scramjet.createFrame();
   el.views.appendChild(f.frame);
-  f.addEventListener("urlchange", (e) => { tab.url = e.url; tab.title = host(e.url); render(); });
+  f.addEventListener("urlchange", (e) => {
+    if (e.url !== tab.url) { tab.blocked = 0; tab.hits = []; }
+    tab.url = e.url; tab.title = host(e.url); render(); saveSession();
+  });
   f.frame.addEventListener("load", () => {
     tab.loading = false;
     try { const t = f.frame.contentDocument.title; if (t) tab.title = t; } catch {}
-    applyCosmetics(f.frame);
-    render();
+    applyCosmetics(f.frame, tab.url); applyZoom(tab);
+    try { f.frame.contentWindow.addEventListener("keydown", onKey, true); f.frame.contentWindow.addEventListener("pointerdown", closeFloating, true); } catch {}
+    histAdd(tab.url, tab.title);
+    render(); saveSession();
   });
   return (tab.frame = f);
 }
@@ -107,22 +132,42 @@ function ensureFrame(tab) {
 function go(tab, url) {
   if (!ready) { showNotice("Still connecting — try again in a second."); return; }
   const f = ensureFrame(tab);
-  tab.url = url; tab.title = host(url); tab.loading = true;
+  tab.url = url; tab.title = host(url); tab.loading = true; tab.lazy = false; tab.blocked = 0; tab.hits = [];
   f.go(url); render();
 }
 
-function select(tab) { active = tab; render(); }
+function select(tab) {
+  if (active && active !== tab && typeof closeFind === "function") closeFind();
+  active = tab;
+  if (tab.lazy && ready) go(tab, tab.url); // restored tabs load when you first open them
+  render();
+}
 
 function closeTab(tab) {
   const i = tabs.indexOf(tab);
+  if (tab.url || tab.page !== "home") closed.unshift({ url: tab.url, page: tab.page, title: tab.title, pinned: tab.pinned });
+  closed.length = Math.min(closed.length, 15);
   tabs.splice(i, 1); tab.row.remove(); tab.frame?.frame.remove();
   if (!tabs.length) newTab(); else if (tab === active) select(tabs[Math.max(0, i - 1)]);
+  saveSession();
+}
+function reopenTab() {
+  const c = closed.shift(); if (!c) return toast("No recently closed tabs");
+  const t = c.url ? newTab(c.url) : newTab(null, c.page);
+  if (c.pinned) setPinned(t, true);
+}
+function setPinned(tab, on) {
+  tab.pinned = on;
+  const pins = tabs.filter((t) => t.pinned && t !== tab);
+  tabs.splice(tabs.indexOf(tab), 1);
+  tabs.splice(on ? pins.length : tabs.filter((t) => t.pinned).length, 0, tab);
+  tabs.forEach((t) => el.tabs.appendChild(t.row)); render(); saveSession();
 }
 
 function render() {
   for (const t of tabs) {
-    t.row.className = "tab" + (t === active ? " active" : "") + (t.loading ? " loading" : "");
-    t.row.innerHTML = `${fav(t.url || (t.page !== "home" ? t.page : ""))}<span class="t">${esc(t.title)}</span><button class="x" title="Close">${ic("close")}</button>`;
+    t.row.className = "tab" + (t === active ? " active" : "") + (t.loading ? " loading" : "") + (t.pinned ? " pinned" : "");
+    t.row.innerHTML = `${fav(t.url || (t.page !== "home" ? t.page : ""))}<span class="t">${esc(t.title)}</span><span class="pn">${ic("pin")}</span><button class="x" title="Close">${ic("close")}</button>`;
     t.row.querySelector(".x").onclick = (e) => { e.stopPropagation(); closeTab(t); };
     if (t.frame) t.frame.frame.classList.toggle("active", t === active);
   }
@@ -138,6 +183,7 @@ function render() {
   if (document.activeElement !== el.addr) el.addr.value = active.url;
   el.star.classList.toggle("on", !!active.url && bookmarks().some((b) => b.url === active.url));
   document.title = active.url ? active.title + " · Cloudora" : "Cloudora";
+  drawShield();
 }
 
 const bookmarks = () => db.get("bookmarks", []);
@@ -154,7 +200,7 @@ el.tiles.addEventListener("click", (e) => {
 });
 function showNotice(msg) { el.notice.textContent = msg; el.notice.hidden = false; }
 
-$("#bar").addEventListener("submit", (e) => { e.preventDefault(); const u = toUrl(el.addr.value); if (u) go(active, u); el.addr.blur(); });
+$("#bar").addEventListener("submit", (e) => { e.preventDefault(); const u = sgSel >= 0 && sg[sgSel] ? sg[sgSel].url : toUrl(el.addr.value); hideSugg(); if (u) go(active, u); el.addr.blur(); });
 $("#home-form").addEventListener("submit", (e) => { e.preventDefault(); const u = toUrl($("#home-q").value); if (u) { $("#home-q").value = ""; go(active, u); } });
 el.addr.addEventListener("focus", () => el.addr.select());
 $("#back").onclick = () => active.frame?.back();
@@ -162,18 +208,25 @@ $("#forward").onclick = () => active.frame?.forward();
 $("#reload").onclick = () => { if (active.frame) { active.loading = true; active.frame.reload(); render(); } };
 $("#new-tab").onclick = () => newTab();
 $("#toggle").onclick = () => el.app.classList.toggle("collapsed");
-el.star.onclick = () => {
+function toggleBookmark() {
   if (!active.url) return;
   const l = bookmarks(), i = l.findIndex((b) => b.url === active.url);
-  if (i >= 0) l.splice(i, 1); else l.push({ url: active.url, title: host(active.url) });
-  db.set("bookmarks", l); render();
-};
-document.addEventListener("keydown", (e) => {
-  if (e.altKey && e.key === "t") { e.preventDefault(); newTab(); }
-  else if (e.altKey && e.key === "w") { e.preventDefault(); closeTab(active); }
-  else if (e.altKey && e.key === "l") { e.preventDefault(); el.addr.focus(); }
-  else if (e.key === "Escape") { $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
-});
+  if (i >= 0) l.splice(i, 1); else l.push({ url: active.url, title: active.title && active.title !== host(active.url) ? active.title : host(active.url) });
+  db.set("bookmarks", l); render(); toast(i >= 0 ? "Bookmark removed" : "Bookmarked");
+}
+el.star.onclick = toggleBookmark;
+function onKey(e) {
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const c = e.code, num = /^Digit([1-9])$/.exec(c);
+    const act = e.shiftKey && c === "KeyT" ? reopenTab : c === "KeyT" ? () => newTab() : c === "KeyW" ? () => closeTab(active) : c === "KeyL" ? () => el.addr.focus()
+      : c === "KeyF" ? openFind : c === "KeyH" ? () => openPage("history") : c === "KeyD" ? toggleBookmark : c === "KeyR" ? () => $("#reload").click()
+      : c === "ArrowLeft" ? () => active.frame?.back() : c === "ArrowRight" ? () => active.frame?.forward()
+      : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
+      : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
+    if (act) { e.preventDefault(); act(); }
+  } else if (e.key === "Escape") { $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+}
+document.addEventListener("keydown", onKey);
 
 // theme engine: mode (auto/light/dark = true black) + color (preset or any hue from the wheel)
 const PRESETS = { midnight: [222, 100], dracula: [265, 90], mocha: [217, 92], sakura: [332, 100], emerald: [155, 65], amber: [38, 95], crimson: [350, 85], cyan: [190, 90] };
@@ -221,7 +274,10 @@ function drawSettings() {
   $("#modes").innerHTML = MODES.map((m) => `<button type="button" class="${t.mode === m ? "on" : ""}" data-m="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join("");
   $("#themes").innerHTML = Object.entries(PRESETS).map(([n, [h, s]]) => `<button class="sw${t.palette === n ? " on" : ""}" data-t="${n}" title="${n}" style="background:${hsl(h, s, 70)}"></button>`).join("");
   drawWheel();
-  document.querySelectorAll(".switch").forEach((b) => { b.classList.toggle("on", prefs[b.dataset.k]); b.setAttribute("aria-checked", prefs[b.dataset.k]); });
+  document.querySelectorAll(".switch[data-k]").forEach((b) => { b.classList.toggle("on", prefs[b.dataset.k]); b.setAttribute("aria-checked", prefs[b.dataset.k]); });
+  $("#allowbox").hidden = !prefs.allow.length;
+  $("#allowlist").innerHTML = prefs.allow.map((h, i) => `<button class="chip" data-al="${i}" title="Resume blocking on this site">${esc(h)} ✕</button>`).join("");
+  if (filterInfo) $("#filter-info").textContent = filterInfo;
 }
 $("#modes").addEventListener("click", (e) => { const b = e.target.closest("[data-m]"); if (b) setTheme({ mode: b.dataset.m }); });
 $("#themes").addEventListener("click", (e) => { const b = e.target.closest(".sw"); if (b) setTheme({ palette: b.dataset.t }); });
@@ -241,7 +297,8 @@ $("#wnative").addEventListener("input", (e) => { const { h, s } = fromHex(e.targ
 document.querySelectorAll(".switch").forEach((b) => (b.onclick = () => {
   const k = b.dataset.k; prefs[k] = !prefs[k]; savePrefs(); drawSettings();
   document.documentElement.classList.toggle("noglow", !prefs.glow);
-  if (k === "adblock") { syncAdblock(); tabs.forEach((t) => t.frame && applyCosmetics(t.frame.frame)); }
+  if (k === "adblock") { syncAdblock(); tabs.forEach((t) => t.frame && applyCosmetics(t.frame.frame, t.url)); render(); }
+  if (k === "restore") persistSession();
 }));
 $("#engine").innerHTML = Object.keys(ENGINES).map((n) => `<option${n === engine ? " selected" : ""}>${n}</option>`).join("");
 $("#engine").onchange = (e) => { engine = e.target.value; db.set("engine", engine); };
@@ -283,13 +340,13 @@ const loaders = {
   async anime(q, key) {
     const rows = q ? [["Results", { s: ["SEARCH_MATCH"], q }]] : [["Trending now", { s: ["TRENDING_DESC"] }], ["Most popular", { s: ["POPULARITY_DESC"] }]];
     const data = await Promise.all(rows.map(([, v]) => gql(LIST, { t: "ANIME", ...v })));
-    if (key === discKey) $("#d-body").innerHTML = rowsHtml(rows, data, (d) => d.Page.media.map(card));
+    if (key === discKey) $("#d-body").innerHTML = (q ? "" : recentHtml("anime")) + rowsHtml(rows, data, (d) => d.Page.media.map(card));
   },
   async manga(q, key) {
     const rows = q ? [["Results", `/manga?limit=24&title=${encodeURIComponent(q)}&order[relevance]=desc${MDQ}`]]
       : [["Most followed", `/manga?limit=24&order[followedCount]=desc${MDQ}`], ["Recently updated", `/manga?limit=24&order[latestUploadedChapter]=desc${MDQ}`]];
     const data = await Promise.all(rows.map(([, p]) => md(p)));
-    if (key === discKey) $("#d-body").innerHTML = rowsHtml(rows, data, (d) => d.data.map(mcard));
+    if (key === discKey) $("#d-body").innerHTML = (q ? "" : recentHtml("manga")) + rowsHtml(rows, data, (d) => d.data.map(mcard));
   },
 };
 let discKey = "";
@@ -349,6 +406,7 @@ async function mangaDetail(id) {
 }
 async function openChapter(i) {
   const { m, chapters } = reading, c = chapters[i], rd = $("#reader");
+  pushRecent("manga", { id: m.id, m, label: chLabel(c) });
   $("#d-detail").hidden = true; rd.hidden = false; rd.scrollTop = 0;
   rd.innerHTML = `<div class="rhead"><button class="ghost" id="r-close">${ic("close")}</button><b>${esc(mTitle(m))} · ${esc(chLabel(c))}</b>
     <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages"><p class="muted">Loading pages…</p></div>`;
@@ -372,7 +430,7 @@ async function animeDetail(id) {
     const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
     const count = Math.min(300, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
-    watching = { id, title: mname(m), count };
+    watching = { id, title: mname(m), count, cover: m.coverImage.large };
     const play = streamOn && count ? `<h4>Play here ${badge(streamOfficial)}</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
     d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div class="dbody">
       <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
@@ -401,6 +459,7 @@ async function attach(v, src) {
 }
 async function playEpisode(num) {
   const w = watching, pl = $("#player"), key = `progress:${w.id}:${num}`;
+  pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num });
   $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0;
   pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
     <select id="p-speed">${[0.75, 1, 1.25, 1.5, 2].map((s) => `<option value="${s}"${s === 1 ? " selected" : ""}>${s}×</option>`).join("")}</select>
@@ -437,6 +496,8 @@ el.disc.addEventListener("change", (e) => {
 
 el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
+  const hd = t.closest("[data-hdel]"); if (hd) { e.stopPropagation(); return histRemove(+hd.dataset.hdel); }
+  const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
   const open = t.closest("[data-open]"); if (open) { d.hidden = true; return newTab(open.dataset.open); }
   if (t.closest("#p-close")) { closePlayer(); if (watching) d.hidden = false; return; }
   const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || playEpisode(+pn.dataset.pn);
@@ -454,7 +515,241 @@ function openPage(p) {
 }
 document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
 
+// ---------- browser features: history, address-bar suggestions, tab menu, find, zoom, shield, session ----------
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
+
+// History
+const HIST_MAX = 1000;
+const histList = () => db.get("history", []);
+function histAdd(url, title) {
+  if (!prefs.history || !/^https?:/i.test(url || "")) return;
+  const l = histList(), last = l[0];
+  if (last && last.url === url) { if (title) last.title = title; last.t = Date.now(); }
+  else { l.unshift({ url, title: title || host(url), t: Date.now() }); if (l.length > HIST_MAX) l.length = HIST_MAX; }
+  db.set("history", l); refreshDiscover("history");
+}
+function histRemove(t) { db.set("history", histList().filter((h) => h.t !== t)); refreshDiscover("history", true); }
+function refreshDiscover(page, force) { if (discKey.startsWith(page + "|") && (force || active.page === page)) { const k = discKey; discKey = ""; if (!active.url && active.page === page) showDiscover(page, k.slice(page.length + 1)); } }
+const dayLabel = (t) => { const d = new Date(t), n = new Date(), y = new Date(n - 864e5); return d.toDateString() === n.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); };
+loaders.history = async (q, key) => {
+  const s = q.toLowerCase(), list = histList().filter((h) => !s || (h.title + " " + h.url).toLowerCase().includes(s));
+  if (key !== discKey) return;
+  if (!list.length) { $("#d-body").innerHTML = `<p class="muted">${q ? "No matches." : prefs.history ? "Nothing here yet. Pages you visit show up here." : "History is turned off in Settings."}</p>`; return; }
+  let html = "", day = "";
+  for (const h of list.slice(0, 400)) {
+    const d = dayLabel(h.t);
+    if (d !== day) { day = d; html += `<div class="hday">${esc(d)}</div>`; }
+    html += `<div class="hrow" data-goto="${esc(h.url)}">${fav(h.url)}<div class="tx"><b>${esc(h.title)}</b><small>${esc(h.url)}</small></div><span class="tm">${new Date(h.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><button class="rm" data-hdel="${h.t}" title="Remove">${ic("close")}</button></div>`;
+  }
+  $("#d-body").innerHTML = html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : "");
+};
+$("#clear-hist").onclick = () => { db.set("history", []); refreshDiscover("history", true); toast("History cleared"); };
+
+// "Continue watching / reading" rows on the Anime and Manga pages
+function pushRecent(kind, entry) {
+  const l = db.get("recent:" + kind, []).filter((x) => x.id !== entry.id);
+  l.unshift(entry); l.length = Math.min(l.length, 12); db.set("recent:" + kind, l);
+  if (discKey.startsWith(kind + "|")) discKey = "";
+}
+function recentHtml(kind) {
+  const l = db.get("recent:" + kind, []); if (!l.length) return "";
+  const cards = l.map((x) => {
+    if (kind === "manga") { if (!x.m) return ""; mItems.set(x.m.id, x.m); return `<div class="mcard glow" data-id="${esc(x.m.id)}"><img loading="lazy" alt="" src="${mCover(x.m)}"><b>${esc(mTitle(x.m))}</b><small>${esc(x.label)}</small></div>`; }
+    return `<div class="mcard glow" data-id="${x.id}"><img loading="lazy" alt="" src="${img(x.cover)}"><b>${esc(x.title)}</b><small>${esc(x.label)}</small></div>`;
+  }).join("");
+  return `<h3>${kind === "anime" ? "Continue watching" : "Continue reading"}</h3><div class="grid">${cards}</div>`;
+}
+
+// Session restore
+function persistSession() {
+  clearTimeout(persistSession.t);
+  db.set("session", prefs.restore ? { active: tabs.indexOf(active), tabs: tabs.map((t) => ({ url: t.url, page: t.page, pinned: t.pinned, title: t.title })) } : null);
+}
+const saveSession = () => { clearTimeout(persistSession.t); persistSession.t = setTimeout(persistSession, 400); };
+addEventListener("pagehide", persistSession);
+function restoreSession() {
+  const s = db.get("session", null);
+  if (!prefs.restore || !s || !Array.isArray(s.tabs) || tabs.length !== 1 || tabs[0].url || tabs[0].page !== "home") return;
+  if (!s.tabs.some((x) => x.url || (x.page && x.page !== "home"))) return;
+  const first = tabs[0];
+  for (const x of s.tabs.slice(0, 30)) {
+    const t = newTab(null, PAGE_TITLES[x.page] ? x.page : "home");
+    if (x.url && /^https?:/i.test(x.url)) { t.url = x.url; t.title = x.title || host(x.url); t.lazy = true; }
+    t.pinned = !!x.pinned;
+  }
+  first.row.remove(); tabs.splice(tabs.indexOf(first), 1);
+  select(tabs[Math.max(0, Math.min(tabs.length - 1, s.active))] || tabs[0]);
+}
+
+// Menus (tab right-click, ⋯ button)
+function showMenu(x, y, items) {
+  const c = $("#ctx"), m = document.createElement("div"); m.className = "menu"; c.innerHTML = "";
+  for (const it of items) {
+    if (it === "-") { m.insertAdjacentHTML("beforeend", '<div class="msep"></div>'); continue; }
+    const b = document.createElement("button"); b.className = "mi"; b.disabled = !!it.off; b.setAttribute("role", "menuitem");
+    b.innerHTML = `<span>${esc(it.label)}</span>${it.key ? `<kbd>${esc(it.key)}</kbd>` : ""}`;
+    b.onclick = () => { closeFloating(); it.fn(); }; m.appendChild(b);
+  }
+  c.appendChild(m); c.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px"; m.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+}
+function closeFloating() { $("#ctx").hidden = true; $("#shield-pop").hidden = true; hideSugg(); }
+$("#ctx").addEventListener("pointerdown", (e) => { if (e.target.id === "ctx") closeFloating(); });
+$("#ctx").addEventListener("contextmenu", (e) => { e.preventDefault(); if (e.target.id === "ctx") closeFloating(); });
+function tabMenu(x, y, tab) {
+  const i = tabs.indexOf(tab);
+  showMenu(x, y, [
+    { label: "Reload", off: !tab.frame, fn: () => { tab.loading = true; tab.frame.reload(); render(); } },
+    { label: "Duplicate tab", off: !tab.url, fn: () => newTab(tab.url) },
+    { label: tab.pinned ? "Unpin tab" : "Pin tab", fn: () => setPinned(tab, !tab.pinned) },
+    { label: "Copy address", off: !tab.url, fn: () => navigator.clipboard?.writeText(tab.url).then(() => toast("Address copied")).catch(() => {}) },
+    "-",
+    { label: "Close tab", key: "Alt+W", fn: () => closeTab(tab) },
+    { label: "Close other tabs", off: tabs.length < 2, fn: () => tabs.filter((t) => t !== tab && !t.pinned).forEach(closeTab) },
+    { label: "Close tabs below", off: i >= tabs.length - 1, fn: () => tabs.slice(i + 1).filter((t) => !t.pinned).forEach(closeTab) },
+  ]);
+}
+$("#menu-btn").onclick = (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  showMenu(r.right - 230, r.bottom + 6, [
+    { label: "New tab", key: "Alt+T", fn: () => newTab() },
+    { label: "Reopen closed tab", key: "Alt+Shift+T", off: !closed.length, fn: reopenTab },
+    "-",
+    { label: "Find in page", key: "Alt+F", off: !active.frame, fn: openFind },
+    { label: "Zoom in", key: "Alt +", off: !active.frame, fn: () => zoomBy(1) },
+    { label: "Zoom out", key: "Alt −", off: !active.frame, fn: () => zoomBy(-1) },
+    { label: "Actual size" + (active.zoom !== 1 ? ` (${Math.round(active.zoom * 100)}%)` : ""), key: "Alt+0", off: !active.frame, fn: () => zoomBy(0) },
+    "-",
+    { label: "History", key: "Alt+H", fn: () => openPage("history") },
+    { label: "Settings", fn: () => $("#open-settings").click() },
+  ]);
+};
+
+// Find in page + zoom (proxied pages share our origin, so we can reach into the frame)
+const fbar = $("#findbar");
+function openFind() {
+  if (!active.frame) return toast("Open a page first");
+  fbar.hidden = false; const q = $("#find-q");
+  try { const sel = String(active.frame.frame.contentWindow.getSelection()); if (sel) q.value = sel.slice(0, 100); } catch {}
+  q.focus(); q.select();
+}
+function closeFind() { fbar.hidden = true; try { active.frame?.frame.contentWindow.getSelection().removeAllRanges(); } catch {} }
+function doFind(back) {
+  const w = active.frame && active.frame.frame.contentWindow, q = $("#find-q").value; if (!w || !q) { $("#find-n").textContent = ""; return; }
+  let ok = false; try { ok = w.find(q, false, !!back, true, false, false, false); } catch {}
+  $("#find-n").textContent = ok ? "" : "No results";
+}
+$("#find-q").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doFind(e.shiftKey); } });
+$("#find-q").addEventListener("input", () => { try { active.frame.frame.contentWindow.getSelection().removeAllRanges(); } catch {} doFind(false); });
+$("#find-next").onclick = () => doFind(false); $("#find-prev").onclick = () => doFind(true); $("#find-x").onclick = closeFind;
+const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+function applyZoom(tab) { try { if (tab.frame) tab.frame.frame.contentDocument.documentElement.style.zoom = tab.zoom === 1 ? "" : String(tab.zoom); } catch {} }
+function zoomBy(d) {
+  if (!active.frame) return;
+  const one = ZOOMS.indexOf(1), i = ZOOMS.indexOf(active.zoom);
+  active.zoom = ZOOMS[d === 0 ? one : Math.max(0, Math.min(ZOOMS.length - 1, (i < 0 ? one : i) + d))];
+  applyZoom(active); toast("Zoom " + Math.round(active.zoom * 100) + "%");
+}
+
+// Address-bar suggestions: bookmarks + history + live search suggestions
+let sg = [], sgSel = -1, sgSeq = 0, sgTimer = 0;
+const sugg = $("#sugg");
+function hideSugg() { sugg.hidden = true; sgSel = -1; el.addr.setAttribute("aria-expanded", "false"); }
+function drawSugg() {
+  if (!sg.length) return hideSugg();
+  sugg.innerHTML = sg.map((x, i) => `<div class="sg${i === sgSel ? " on" : ""}" role="option" data-i="${i}">${ic(x.icon)}<span class="tx">${esc(x.text)}</span>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</div>`).join("");
+  sugg.hidden = false; el.addr.setAttribute("aria-expanded", "true");
+}
+function localMatches(q) {
+  const s = q.toLowerCase(), seen = new Set(), out = [];
+  for (const b of bookmarks()) if ((b.title + " " + b.url).toLowerCase().includes(s) && !seen.has(b.url)) { seen.add(b.url); out.push({ icon: "star", text: b.title, sub: host(b.url), url: b.url }); }
+  for (const h of histList()) { if (out.length >= 5) break; if ((h.title + " " + h.url).toLowerCase().includes(s) && !seen.has(h.url)) { seen.add(h.url); out.push({ icon: "history", text: h.title, sub: host(h.url), url: h.url }); } }
+  return out.slice(0, 5);
+}
+function buildSugg(q, remote) {
+  const url = toUrl(q), direct = /^https?:\/\//i.test(url) && url.startsWith("https://") && !url.includes(encodeURIComponent(q)) || /^[a-z][a-z0-9+.-]*:\/\//i.test(q);
+  const out = [{ icon: direct ? "globe" : "search", text: q, sub: direct ? "Open" : "Search", url }];
+  const seen = new Set([url]);
+  for (const x of [...localMatches(q), ...remote.map((t) => ({ icon: "search", text: t, sub: "", url: toUrl(t) }))]) if (!seen.has(x.url)) { seen.add(x.url); out.push(x); }
+  return out.slice(0, 9);
+}
+el.addr.addEventListener("input", () => {
+  const q = el.addr.value.trim(); clearTimeout(sgTimer); const seq = ++sgSeq;
+  if (!q) { sg = []; return hideSugg(); }
+  sg = buildSugg(q, []); sgSel = -1; drawSugg();
+  if (q.length < 2 || /^[a-z][a-z0-9+.-]*:\/\//i.test(q)) return;
+  sgTimer = setTimeout(async () => {
+    try { const r = await (await fetch("/api/suggest?q=" + encodeURIComponent(q))).json(); if (seq === sgSeq && document.activeElement === el.addr) { sg = buildSugg(q, r); sgSel = -1; drawSugg(); } } catch {}
+  }, 160);
+});
+el.addr.addEventListener("keydown", (e) => {
+  if (sugg.hidden || !sg.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); sgSel = (sgSel + (e.key === "ArrowDown" ? 1 : -1) + sg.length + 1) % (sg.length + 1) - 0; if (sgSel === sg.length) sgSel = -1; drawSugg(); }
+  else if (e.key === "Escape") { hideSugg(); el.addr.value = active.url; }
+});
+el.addr.addEventListener("blur", () => setTimeout(hideSugg, 120));
+sugg.addEventListener("mousedown", (e) => {
+  e.preventDefault(); const it = e.target.closest(".sg"); if (!it) return;
+  const u = sg[+it.dataset.i].url; hideSugg(); el.addr.blur(); go(active, u);
+});
+
+// Ad & tracker shield
+let filterInfo = "";
+fetch("/adblock/info.json").then((r) => r.json()).then((i) => {
+  const lists = { easylist: "EasyList", easyprivacy: "EasyPrivacy", "ublock-filters": "uBlock filters" };
+  filterInfo = `${Object.values(lists).join(", ")} + more · ${Math.round(i.network / 1000)}k network and ${Math.round((i.cosmetic + i.scriptlets) / 1000)}k page rules · ${i.built}`;
+}).catch(() => {});
+function drawShield() {
+  const b = $("#shield"), off = !prefs.adblock || (!!active.url && paused(active.url));
+  b.classList.toggle("off", off);
+  b.querySelector(".ico").innerHTML = ic(off ? "shieldoff" : "shield");
+  const n = b.querySelector(".n"); n.hidden = off || !active.blocked; n.textContent = active.blocked > 99 ? "99+" : active.blocked;
+  b.title = !prefs.adblock ? "Blocker is off" : off ? "Blocker paused on this site" : active.blocked ? `${active.blocked} blocked on this page` : "Ad & tracker blocker";
+  if (!$("#shield-pop").hidden) drawShieldPop();
+}
+function drawShieldPop() {
+  const pop = $("#shield-pop"), u = active.url;
+  if (!u) { pop.innerHTML = '<b>Ad &amp; tracker blocker</b><small class="muted">Open a page to see what gets blocked on it.</small>'; return; }
+  const on = prefs.adblock && !paused(u), by = new Map();
+  for (const x of active.hits) { const d = rawHost(x.url).replace(/^www\./, "") || "other"; by.set(d, (by.get(d) || 0) + 1); }
+  const rows = [...by].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([d, n]) => `<div><span>${esc(d)}</span><span>${n}</span></div>`).join("");
+  pop.innerHTML = `<div class="set"><div><b>${esc(host(u))}</b><small>${!prefs.adblock ? "Turned off in Settings" : on ? "Blocking on this site" : "Paused on this site"}</small></div><button class="switch${on ? " on" : ""}" id="sp-toggle" role="switch" aria-checked="${on}" ${prefs.adblock ? "" : "disabled"}></button></div>
+    <div><span class="big">${active.blocked}</span> <span class="muted">blocked on this page</span></div>${rows ? `<div class="hits">${rows}</div>` : ""}
+    <small class="muted">${esc(filterInfo || "EasyList, EasyPrivacy and uBlock filters")}</small>`;
+}
+$("#shield").onclick = (e) => {
+  const pop = $("#shield-pop");
+  if (!pop.hidden) return (pop.hidden = true);
+  closeFloating(); pop.hidden = false; drawShieldPop();
+  const r = e.currentTarget.getBoundingClientRect(), w = pop.getBoundingClientRect().width;
+  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px"; pop.style.top = r.bottom + 8 + "px";
+};
+$("#shield-pop").addEventListener("click", (e) => {
+  if (!e.target.closest("#sp-toggle") || !active.url) return;
+  const h = rawHost(active.url).replace(/^www\./, "");
+  prefs.allow = paused(active.url) ? prefs.allow.filter((d) => !(rawHost(active.url) === d || rawHost(active.url).endsWith("." + d))) : [...prefs.allow, h];
+  savePrefs(); syncAdblock(); drawShield();
+  setTimeout(() => { if (active.frame) { active.loading = true; active.frame.reload(); render(); } }, 120); // reload so the change applies
+});
+document.addEventListener("pointerdown", (e) => { if (!e.target.closest("#shield-pop, #shield, #sugg, #address")) $("#shield-pop").hidden = true; });
+$("#allowlist").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-al]"); if (!b) return;
+  prefs.allow.splice(+b.dataset.al, 1); savePrefs(); syncAdblock(); drawSettings(); render();
+});
+navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (e) => {
+  const d = e.data; if (!d || !d.cloudora) return;
+  if (d.cloudora === "allow" && Array.isArray(d.hosts)) { prefs.allow = d.hosts; savePrefs(); drawSettings(); render(); }
+  else if (d.cloudora === "blocked" && Array.isArray(d.items)) {
+    for (const it of d.items) {
+      const t = (active.url && rawHost(active.url) === it.doc ? active : tabs.find((x) => x.url && rawHost(x.url) === it.doc)) || active; // frames inside a page report their own host, so fall back to the tab you're looking at
+      t.blocked++; if (t.hits.length < 300) t.hits.push(it);
+    }
+    drawShield();
+  }
+});
+
 applyTheme();
 if (matchMedia("(max-width:720px)").matches) el.app.classList.add("collapsed");
 newTab();
-boot().catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });
+boot().then(restoreSession).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });

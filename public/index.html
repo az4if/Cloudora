@@ -23,7 +23,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
   <aside id="sidebar">
     <div class="brand"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" />Cloudora</div>
     <button id="new-tab" data-ic="plus">New tab</button>
-    <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button></nav>
+    <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button><button data-page="history">History</button></nav>
     <div id="tablist"></div>
     <div class="side-foot"><span id="status">Connecting…</span><button class="ghost" id="open-settings" title="Settings" data-ic="sliders"></button></div>
   </aside>
@@ -33,12 +33,21 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
       <button type="button" class="ghost" id="back" title="Back" data-ic="back"></button>
       <button type="button" class="ghost" id="forward" title="Forward" data-ic="forward"></button>
       <button type="button" class="ghost" id="reload" title="Reload" data-ic="reload"></button>
-      <div class="pill glow"><input id="address" placeholder="Search or enter address" spellcheck="false" /></div>
+      <div class="pill glow"><input id="address" placeholder="Search or enter address" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="sugg" /><div id="sugg" role="listbox" hidden></div></div>
+      <button type="button" class="ghost" id="shield" title="Ad &amp; tracker blocker"><span class="ico"></span><span class="n" hidden></span></button>
       <button type="button" class="ghost" id="mode-btn" title="Day / night"></button>
-      <button type="button" class="ghost" id="star" title="Bookmark" data-ic="star"></button>
+      <button type="button" class="ghost" id="star" title="Bookmark (Alt+D)" data-ic="star"></button>
+      <button type="button" class="ghost" id="menu-btn" title="Menu" data-ic="dots"></button>
     </form>
     <div id="stage">
       <div id="views"></div>
+      <div id="findbar" hidden>
+        <input id="find-q" placeholder="Find in page" spellcheck="false" autocomplete="off" />
+        <span id="find-n"></span>
+        <button type="button" class="ghost" id="find-prev" title="Previous (Shift+Enter)" data-ic="up"></button>
+        <button type="button" class="ghost" id="find-next" title="Next (Enter)" data-ic="down"></button>
+        <button type="button" class="ghost" id="find-x" title="Close (Esc)" data-ic="close"></button>
+      </div>
       <section id="home">
         <div class="word">Cloudora</div>
         <div class="tag">Browse beyond the walls.</div>
@@ -55,6 +64,9 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
       </section>
     </div>
   </main>
+  <div id="shield-pop" hidden></div>
+  <div id="ctx" role="menu" hidden></div>
+  <div id="toast" hidden></div>
   <div id="settings" hidden>
     <div class="card">
       <div class="row"><b>Settings</b><button class="ghost" id="close-settings" data-ic="close"></button></div>
@@ -73,9 +85,14 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
       <h4>Search</h4>
       <div class="set"><b>Search engine</b><select id="engine"></select></div>
       <h4>Privacy</h4>
-      <div class="set"><div><b>Block ads &amp; trackers</b><small>Blocks common ad networks and hides ad boxes</small></div><button class="switch" data-k="adblock" role="switch"></button></div>
+      <div class="set"><div><b>Block ads &amp; trackers</b><small id="filter-info">EasyList, EasyPrivacy and uBlock filters: network blocking, element hiding, scriptlets and a popup guard</small></div><button class="switch" data-k="adblock" role="switch"></button></div>
+      <div id="allowbox" hidden><small>Paused on these sites</small><div class="chips" id="allowlist"></div></div>
+      <h4>Browser</h4>
+      <div class="set"><div><b>Restore tabs on start</b><small>Reopen the tabs you had last time</small></div><button class="switch" data-k="restore" role="switch"></button></div>
+      <div class="set"><div><b>Save history</b><small>Powers History and address-bar suggestions</small></div><button class="switch" data-k="history" role="switch"></button></div>
+      <div class="set"><b>History</b><button class="btn" id="clear-hist">Clear</button></div>
       <div class="set"><b>Bookmarks</b><button class="btn" id="clear-bm">Clear</button></div>
-      <small class="foot">Cloudora 0.4</small>
+      <small class="foot">Cloudora 0.5</small>
     </div>
   </div>
 </div>

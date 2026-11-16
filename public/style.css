@@ -154,3 +154,35 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 .badge.warn{background:#d99a1f26;color:#d99a1f;border:1px solid #d99a1f55}
 #p-badge{flex:none}
 @media (max-width:640px){.dcard{grid-template-columns:1fr;overflow:auto}.dcard>img{width:110px}.dbody{max-height:none;overflow:visible;padding-right:0}}
+
+/* ---- 0.5: shield, omnibox, menus, find, tabs ---- */
+#shield{position:relative}#shield .ico svg{display:block}
+#shield .n{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--accent);color:var(--on-accent,#0b0b0d);font-size:10px;font-weight:700;line-height:16px;text-align:center}
+#shield.off{color:var(--muted);opacity:.55}#shield:not(.off){color:var(--accent)}
+#sugg{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;padding:6px;border:1px solid var(--border);border-radius:16px;background:var(--side);box-shadow:0 18px 50px #000a;max-height:60vh;overflow:auto}
+#sugg[hidden]{display:none}
+.sg{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer;color:var(--text)}
+.sg svg{width:15px;height:15px;color:var(--muted)}.sg .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg small{color:var(--muted);margin-left:8px}.sg.on,.sg:hover{background:var(--surface2)}
+.menu{position:fixed;z-index:40;min-width:210px;padding:6px;border:1px solid var(--border);border-radius:14px;background:var(--side);box-shadow:0 18px 50px #000a}
+#ctx[hidden],#shield-pop[hidden],#findbar[hidden],#toast[hidden]{display:none}
+#ctx{position:fixed;inset:0;z-index:40}
+#ctx .menu{position:fixed}
+.mi{display:flex;justify-content:space-between;gap:18px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:none;text-align:left}
+.mi:hover:not(:disabled){background:var(--surface2)}.mi:disabled{opacity:.4;cursor:default}.mi kbd{color:var(--muted);font:inherit;font-size:12px}
+.msep{height:1px;margin:5px 4px;background:var(--border)}
+#shield-pop{position:fixed;z-index:35;width:min(330px,92vw);display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border);border-radius:18px;background:var(--side);box-shadow:0 18px 50px #000a}
+#shield-pop .hits{display:flex;flex-direction:column;gap:2px;max-height:170px;overflow:auto;font-size:12px;color:var(--muted)}
+#shield-pop .hits div{display:flex;justify-content:space-between;gap:10px}#shield-pop .hits span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#shield-pop .big{font-size:30px;font-weight:800;letter-spacing:-.03em;line-height:1}
+#findbar{position:absolute;top:10px;right:14px;z-index:8;display:flex;align-items:center;gap:2px;padding:5px 6px 5px 12px;border:1px solid var(--border);border-radius:999px;background:var(--side);box-shadow:0 10px 30px #0008}
+#find-q{width:190px;border:0;background:none;outline:none}#find-n{color:var(--muted);font-size:12px;padding:0 6px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;padding:9px 16px;border:1px solid var(--border);border-radius:999px;background:var(--side);box-shadow:0 10px 30px #000a;font-size:13px}
+.tab.pinned .x{display:none}.tab.pinned{border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.tab .pn{display:none;width:12px;height:12px;color:var(--accent)}.tab.pinned .pn{display:block}
+.tab.dragover{border-color:var(--accent)}
+.hday{margin:22px 0 6px;font-size:13px;color:var(--muted)}
+.hrow{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:12px;cursor:pointer}.hrow:hover{background:var(--surface2)}
+.hrow .tx{flex:1;min-width:0}.hrow b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hrow small{color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow .tm{color:var(--muted);font-size:12px}.hrow .rm{display:none;padding:3px;border:0;border-radius:7px;background:var(--border)}.hrow:hover .rm{display:grid}
+#allowbox small{color:var(--muted);font-size:12px}#allowbox .chips{margin-top:6px}
