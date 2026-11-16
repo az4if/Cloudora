@@ -11,7 +11,7 @@ by **your server**, not your device, and rendered with Scramjet.
   domains (list in `public/sw.js`) and hides common ad boxes. Lighter than uBlock Origin;
   it will not remove in-stream video ads (e.g. YouTube).
 - **Anime:** trending, popular, search and details from AniList, official "where to watch" links, and a **built-in player** (HLS/MP4, subtitles, speed, resume, auto-next) when you configure a source API (below)
-- **Manga:** browse, search and **read in the app** using the public MangaDex API
+- **Manga:** browse, search and read in the app using the public MangaDex API. Community translations are labeled **Unofficial**; publisher links and official chapters are labeled **Official**
 - Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
 - The server needs outbound access to graphql.anilist.co, api.mangadex.org and their
   image hosts. Manga page images load straight from MangaDex's servers into the visitor's browser.
@@ -59,5 +59,5 @@ Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expect
                      { "url": "https://.../ep1.mp4",      "type": "mp4",  "label": "720p"  } ],
       "subtitles": [ { "url": "https://.../en.vtt", "lang": "en", "label": "English" } ] }
 
-`type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
+Each source may include `"official": true` (shows an **Official** badge; the default is **Unofficial**). Set `STREAM_API_OFFICIAL=1` if your whole API is an official one. `type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
 cross-site playback (CORS). With no `STREAM_API` set, anime pages show official links only.

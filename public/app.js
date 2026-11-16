@@ -194,6 +194,9 @@ function applyTheme() {
   const v = themeVars(), r = document.documentElement.style;
   for (const k in v) r.setProperty(k === "color-scheme" ? k : "--" + k, v[k]);
   db.set("vars", v);
+  document.documentElement.dataset.mode = v["color-scheme"];
+  window.setFavicon && setFavicon(v["color-scheme"]);
+  const tc = document.querySelector("meta[name=theme-color]"); if (tc) tc.content = v.bg;
   $("#mode-btn").innerHTML = ic(v["color-scheme"] === "light" ? "moon" : "sun");
   $("#mode-btn").title = v["color-scheme"] === "light" ? "Switch to night" : "Switch to day";
 }
@@ -315,22 +318,34 @@ const mcard = (m) => { mItems.set(m.id, m); return `<div class="mcard glow" data
 const closeBtn = () => `<button class="ghost dx">${ic("close")}</button>`;
 const chLabel = (c) => "Ch. " + (c.attributes.chapter || "?") + (c.attributes.title ? " – " + c.attributes.title : "");
 let reading = null;
+const badge = (official) => official ? '<span class="badge ok">Official</span>' : '<span class="badge warn">Unofficial</span>';
 async function mangaDetail(id) {
   const d = $("#d-detail"), m = mItems.get(id);
   if (!m) return;
+  const L = m.attributes.links || {};
+  const stores = [["engtl", "Official English"], ["amz", "Amazon"], ["ebj", "eBookJapan"], ["cdj", "CDJapan"]].filter(([k]) => /^https?:\/\//.test(L[k] || ""));
+  const chip = (url, text) => `<button class="chip" data-open="${esc(url)}">${esc(text)}</button>`;
+  const storeChips = stores.map(([k, n]) => chip(L[k], n)).join("");
   const tags = m.attributes.tags.slice(0, 8).map((t) => `<span class="chip">${esc(t.attributes.name.en || "")}</span>`).join("");
   const desc = (m.attributes.description.en || "No description.").replace(/\[[^\]]*\]|[*_>`#]/g, "").slice(0, 700);
   d.hidden = false;
-  d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
-    <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p><h4>Chapters</h4><div class="chlist" id="chs"><p class="muted">Loading…</p></div>
-    <h4>Source</h4><div class="chips"><button class="chip" data-open="https://mangadex.org/title/${m.id}">Open on MangaDex</button></div></div></div>`;
+  d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div class="dbody"><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
+    <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p>
+    <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || '<span class="muted">Loading…</span>'}</div>
+    <h4>Read here ${badge(false)}</h4><small class="muted">Community translations hosted on MangaDex.</small><div class="chlist" id="chs"><p class="muted">Loading…</p></div>
+    <h4>Info</h4><div class="chips">${chip("https://mangadex.org/title/" + m.id, "MangaDex")}${L.al ? chip("https://anilist.co/manga/" + L.al, "AniList") : ""}</div></div></div>`;
   try {
-    const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=0&contentRating[]=safe&contentRating[]=suggestive`);
-    const seen = new Set();
-    const chapters = f.data.filter((c) => !c.attributes.externalUrl && c.attributes.pages > 0 && !seen.has(c.attributes.chapter) && seen.add(c.attributes.chapter)).reverse();
-    reading = { m, chapters };
-    $("#chs").innerHTML = chapters.length ? chapters.map((c, i) => `<button class="chip" data-ch="${i}">${esc(chLabel(c))}</button>`).reverse().join("") : '<p class="muted">No English chapters hosted on MangaDex.</p>';
-  } catch (err) { $("#chs").innerHTML = `<p class="muted">Couldn't load chapters (${esc(err.message)}).</p>`; }
+    const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=1&contentRating[]=safe&contentRating[]=suggestive`);
+    const seenH = new Set(), seenO = new Set();
+    const hosted = f.data.filter((c) => !c.attributes.externalUrl && c.attributes.pages > 0 && !seenH.has(c.attributes.chapter) && seenH.add(c.attributes.chapter)).reverse();
+    const ext = f.data.filter((c) => /^https?:\/\//.test(c.attributes.externalUrl || "") && !seenO.has(c.attributes.chapter) && seenO.add(c.attributes.chapter)).slice(0, 24);
+    reading = { m, chapters: hosted };
+    $("#mo").innerHTML = (storeChips + ext.map((c) => chip(c.attributes.externalUrl, "Read " + chLabel(c))).join("")) || '<span class="muted">No official links listed.</span>';
+    $("#chs").innerHTML = hosted.length ? hosted.map((c, i) => `<button class="chip" data-ch="${i}">${esc(chLabel(c))}</button>`).reverse().join("") : '<p class="muted">No English chapters hosted on MangaDex.</p>';
+  } catch (err) {
+    $("#mo").innerHTML = storeChips || '<span class="muted">No official links listed.</span>';
+    $("#chs").innerHTML = `<p class="muted">Couldn't load chapters (${esc(err.message)}).</p>`;
+  }
 }
 async function openChapter(i) {
   const { m, chapters } = reading, c = chapters[i], rd = $("#reader");
@@ -345,8 +360,8 @@ async function openChapter(i) {
 }
 
 // Anime detail (AniList) + built-in player (needs a source API on the server)
-let streamOn = false, watching = null;
-fetch("/api/config").then((r) => r.json()).then((c) => (streamOn = !!c.stream)).catch(() => {});
+let streamOn = false, streamOfficial = false, watching = null;
+fetch("/api/config").then((r) => r.json()).then((c) => { streamOn = !!c.stream; streamOfficial = !!c.official; }).catch(() => {});
 async function animeDetail(id) {
   const d = $("#d-detail");
   d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Loading…</p></div>`;
@@ -358,11 +373,11 @@ async function animeDetail(id) {
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
     const count = Math.min(300, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
     watching = { id, title: mname(m), count };
-    const play = streamOn && count ? `<h4>Play</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
-    d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div>
+    const play = streamOn && count ? `<h4>Play here ${badge(streamOfficial)}</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
+    d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div class="dbody">
       <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
       <div class="chips" style="margin-top:8px">${(m.genres || []).map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
-      <p class="desc">${esc(desc)}</p>${play}<h4>${play ? "Official sources" : "Where to watch"}</h4>
+      <p class="desc">${esc(desc)}</p>${play}<h4>Official sources ${badge(true)}</h4>
       <div class="chips">${links.map((l) => `<button class="chip" data-open="${esc(l.url)}">${esc(l.site)}</button>`).join("")}</div></div></div>`;
   } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; }
 }
@@ -372,6 +387,7 @@ const ensureHls = () => new Promise((res) => { if (window.Hls) return res(); con
 const pmsg = (t) => { const m = $("#p-msg"); if (m) m.textContent = t; };
 function closePlayer() { const pl = $("#player"); const v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); } pl.hidden = true; pl.innerHTML = ""; }
 async function attach(v, src) {
+  const pb = $("#p-badge"); if (pb) pb.innerHTML = badge(src.official ?? streamOfficial);
   if (v._hls) { v._hls.destroy(); v._hls = null; }
   if (src.type === "hls" || /\.m3u8(\?|$)/i.test(src.url)) {
     await ensureHls();
@@ -389,7 +405,7 @@ async function playEpisode(num) {
   pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
     <select id="p-speed">${[0.75, 1, 1.25, 1.5, 2].map((s) => `<option value="${s}"${s === 1 ? " selected" : ""}>${s}×</option>`).join("")}</select>
     <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
-    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><div class="prow"><select id="p-src" hidden></select><span class="muted" id="p-msg">Loading source…</span></div></div>`;
+    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><div class="prow"><select id="p-src" hidden></select><span id="p-badge"></span><span class="muted" id="p-msg">Loading source…</span></div></div>`;
   const v = $("#vid");
   try {
     const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));

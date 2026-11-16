@@ -99,7 +99,7 @@ const server = createServer((req, res) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
-  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API })); }
+  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || "") })); }
   if (STREAM_API && req.method === "GET" && (u.pathname === "/api/stream/episodes" || u.pathname === "/api/stream/sources")) {
     const q = new URLSearchParams();
     for (const k of ["anilist_id", "episode"]) {

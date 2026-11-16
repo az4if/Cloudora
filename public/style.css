@@ -10,6 +10,9 @@ svg{width:18px;height:18px;flex:none}
 #app.collapsed #sidebar{margin-left:-249px}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 6px;font-weight:700;font-size:17px}
 .brand img{width:30px;height:30px;flex:none}
+.logo-b{display:none}
+[data-mode=light] .logo-w{display:none}
+[data-mode=light] .logo-b{display:block}
 .brand svg{width:26px;height:26px;color:var(--accent)}
 .ghost{display:grid;place-items:center;padding:8px;border:0;border-radius:10px;background:none;color:var(--muted)}
 .ghost:hover{background:var(--surface2);color:var(--text)}
@@ -138,3 +141,16 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 .prow{display:flex;align-items:center;gap:10px}
 .rhead select,.prow select{padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)}
 .chlist.eps .chip{min-width:44px;text-align:center}
+
+#d-detail{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:clamp(12px,4vw,32px);background:#000b;backdrop-filter:blur(6px)}
+.dcard{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:22px;width:min(840px,100%);max-height:min(86vh,720px);padding:22px;overflow:hidden;box-shadow:0 24px 80px #000a}
+.dcard>img{width:clamp(110px,22vw,190px);align-self:start}
+.dcard>p{grid-column:1/-1}
+.dbody{min-width:0;min-height:0;max-height:calc(min(86vh,720px) - 44px);overflow:auto;padding-right:8px}
+.dbody .chlist{max-height:30vh}
+.dbody h4{display:flex;align-items:center;gap:8px}
+.badge{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.badge.ok{background:#22a86126;color:#22a861;border:1px solid #22a86155}
+.badge.warn{background:#d99a1f26;color:#d99a1f;border:1px solid #d99a1f55}
+#p-badge{flex:none}
+@media (max-width:640px){.dcard{grid-template-columns:1fr;overflow:auto}.dcard>img{width:110px}.dbody{max-height:none;overflow:visible;padding-right:0}}

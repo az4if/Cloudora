@@ -4,12 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cloudora</title>
-  <link rel="icon" href="/favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" href="/favicon-black.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-black-32.png" />
+  <link rel="icon" href="/favicon-white.ico" sizes="any" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-white-32.png" media="(prefers-color-scheme: dark)" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <meta name="theme-color" content="#000000" />
-  <script>try{const v=JSON.parse(localStorage.getItem("cloudora:vars")),r=document.documentElement.style;for(const k in v)r.setProperty(k=="color-scheme"?k:"--"+k,v[k])}catch{}</script>
+  <script>try{const v=JSON.parse(localStorage.getItem("cloudora:vars")),r=document.documentElement.style;for(const k in v)r.setProperty(k=="color-scheme"?k:"--"+k,v[k]);document.documentElement.dataset.mode=v["color-scheme"]}catch{}
+window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelectorAll("link[rel=icon]").forEach(l=>l.remove());for(const[t,h]of[["image/x-icon","/favicon-"+c+".ico"],["image/png","/favicon-"+c+"-32.png"]]){const l=document.createElement("link");l.rel="icon";l.type=t;l.href=h;document.head.appendChild(l)}};setFavicon(document.documentElement.dataset.mode||"dark")</script>
   <link rel="stylesheet" href="style.css" />
   <script src="/scram/scramjet.all.js"></script>
   <script src="/baremux/index.js"></script>
@@ -18,7 +21,7 @@
 <body>
 <div id="app">
   <aside id="sidebar">
-    <div class="brand"><img src="/logo.png" alt="" />Cloudora</div>
+    <div class="brand"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" />Cloudora</div>
     <button id="new-tab" data-ic="plus">New tab</button>
     <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button></nav>
     <div id="tablist"></div>
