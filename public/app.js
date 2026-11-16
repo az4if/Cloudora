@@ -37,7 +37,7 @@ const prefs = Object.assign({ adblock: true, glow: true, theme: { mode: "dark", 
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
-const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga", watch: "Watch" };
+const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga" };
 const AD_CSS = 'ins.adsbygoogle,.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.ad-slot,.ad-wrapper,.advertisement,.sponsored-ad,.taboola,[id^="taboola"],[class*="outbrain"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adnxs"],iframe[src*="adsystem"],#ad,#ads,.ads{display:none!important}';
 function applyCosmetics(frame) {
   try {
@@ -131,7 +131,7 @@ function render() {
   el.disc.hidden = !(blank && active.page !== "home");
   if (!el.home.hidden) renderTiles();
   if (!el.disc.hidden) {
-    if (!discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; $("#d-detail").hidden = true; $("#reader").hidden = true; }
+    if (!discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
     showDiscover(active.page, $("#d-q").value.trim());
   }
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", blank && b.dataset.page === active.page));
@@ -172,7 +172,7 @@ document.addEventListener("keydown", (e) => {
   if (e.altKey && e.key === "t") { e.preventDefault(); newTab(); }
   else if (e.altKey && e.key === "w") { e.preventDefault(); closeTab(active); }
   else if (e.altKey && e.key === "l") { e.preventDefault(); el.addr.focus(); }
-  else if (e.key === "Escape") { $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; }
+  else if (e.key === "Escape") { $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
 });
 
 // theme engine: mode (auto/light/dark = true black) + color (preset or any hue from the wheel)
@@ -260,10 +260,10 @@ document.addEventListener("pointermove", (e) => {
   });
 });
 
-// Discover pages. Anime: AniList. Manga: MangaDex (read here). Watch: free films on the Internet Archive.
+// Discover pages. Anime: AniList (+ built-in player when a source API is configured). Manga: MangaDex (read here).
 const FIELDS = "id title{romaji english} coverImage{large} averageScore format episodes chapters";
 const LIST = `query($t:MediaType,$s:[MediaSort],$q:String){Page(perPage:20){media(type:$t,sort:$s,search:$q,isAdult:false){${FIELDS}}}}`;
-const ONE = `query($id:Int){Media(id:$id){${FIELDS} type description genres siteUrl externalLinks{url site type}}}`;
+const ONE = `query($id:Int){Media(id:$id){${FIELDS} type description genres siteUrl nextAiringEpisode{episode} externalLinks{url site type}}}`;
 async function gql(query, variables) {
   const r = await fetch("/api/anilist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }) });
   const j = await r.json();
@@ -287,13 +287,6 @@ const loaders = {
       : [["Most followed", `/manga?limit=24&order[followedCount]=desc${MDQ}`], ["Recently updated", `/manga?limit=24&order[latestUploadedChapter]=desc${MDQ}`]];
     const data = await Promise.all(rows.map(([, p]) => md(p)));
     if (key === discKey) $("#d-body").innerHTML = rowsHtml(rows, data, (d) => d.data.map(mcard));
-  },
-  async watch(q, key) {
-    const j = await (await fetch("/api/archive?q=" + encodeURIComponent(q))).json();
-    if (key !== discKey) return;
-    const docs = (j.response && j.response.docs) || [];
-    $("#d-body").innerHTML = '<p class="muted">Free public-domain movies, classic cartoons and TV from the Internet Archive.</p><div class="grid">' +
-      (docs.map((d) => `<div class="mcard glow" data-id="${esc(d.identifier)}"><img loading="lazy" alt="" src="${img("https://archive.org/services/img/" + d.identifier)}"><b>${esc(String(d.title))}</b><small>${esc(String(d.year || ""))}</small></div>`).join("") || '<p class="muted">Nothing found.</p>') + "</div>";
   },
 };
 let discKey = "";
@@ -351,7 +344,9 @@ async function openChapter(i) {
   } catch (err) { $("#reader .rpages").innerHTML = `<p class="muted">Couldn't load this chapter (${esc(err.message)}).</p>`; }
 }
 
-// Anime detail (AniList + official links)
+// Anime detail (AniList) + built-in player (needs a source API on the server)
+let streamOn = false, watching = null;
+fetch("/api/config").then((r) => r.json()).then((c) => (streamOn = !!c.stream)).catch(() => {});
 async function animeDetail(id) {
   const d = $("#d-detail");
   d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Loading…</p></div>`;
@@ -361,24 +356,81 @@ async function animeDetail(id) {
     const seen = new Set();
     const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
+    const count = Math.min(300, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
+    watching = { id, title: mname(m), count };
+    const play = streamOn && count ? `<h4>Play</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
     d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div>
       <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
       <div class="chips" style="margin-top:8px">${(m.genres || []).map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
-      <p class="desc">${esc(desc)}</p><h4>Where to watch</h4>
+      <p class="desc">${esc(desc)}</p>${play}<h4>${play ? "Official sources" : "Where to watch"}</h4>
       <div class="chips">${links.map((l) => `<button class="chip" data-open="${esc(l.url)}">${esc(l.site)}</button>`).join("")}</div></div></div>`;
   } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; }
 }
 
+// Player: plays HLS / MP4 URLs returned by the configured source API (+ subtitles, speed, resume, auto-next)
+const ensureHls = () => new Promise((res) => { if (window.Hls) return res(); const s = document.createElement("script"); s.src = "/hls/hls.min.js"; s.onload = s.onerror = res; document.head.appendChild(s); });
+const pmsg = (t) => { const m = $("#p-msg"); if (m) m.textContent = t; };
+function closePlayer() { const pl = $("#player"); const v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); } pl.hidden = true; pl.innerHTML = ""; }
+async function attach(v, src) {
+  if (v._hls) { v._hls.destroy(); v._hls = null; }
+  if (src.type === "hls" || /\.m3u8(\?|$)/i.test(src.url)) {
+    await ensureHls();
+    if (window.Hls && Hls.isSupported()) {
+      const h = (v._hls = new Hls());
+      h.on(Hls.Events.ERROR, (_, e) => e.fatal && pmsg("Couldn't play this source (the host may block cross-site playback). Try another source."));
+      h.loadSource(src.url); h.attachMedia(v);
+    } else if (v.canPlayType("application/vnd.apple.mpegurl")) v.src = src.url; // Safari / iOS native HLS
+    else pmsg("This browser can't play HLS streams.");
+  } else v.src = src.url;
+}
+async function playEpisode(num) {
+  const w = watching, pl = $("#player"), key = `progress:${w.id}:${num}`;
+  $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0;
+  pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
+    <select id="p-speed">${[0.75, 1, 1.25, 1.5, 2].map((s) => `<option value="${s}"${s === 1 ? " selected" : ""}>${s}×</option>`).join("")}</select>
+    <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
+    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><div class="prow"><select id="p-src" hidden></select><span class="muted" id="p-msg">Loading source…</span></div></div>`;
+  const v = $("#vid");
+  try {
+    const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "source API error " + r.status);
+    const all = (j.sources || []).filter((s) => s.url && /^https?:\/\//.test(s.url));
+    const playable = all.filter((s) => s.type !== "embed"), emb = all.find((s) => s.type === "embed");
+    if (!playable.length) {
+      if (!emb) throw new Error("no sources for this episode");
+      return ($("#p-msg").innerHTML = `<button class="chip" data-open="${esc(emb.url)}">Open player in a tab</button>`);
+    }
+    (j.subtitles || []).forEach((t, i) => {
+      if (!/^https?:\/\//.test(t.url)) return;
+      const k = document.createElement("track"); k.kind = "subtitles"; k.src = t.url; k.label = t.label || t.lang || "Subtitles"; k.srclang = t.lang || "en"; k.default = i === 0; v.appendChild(k);
+    });
+    const sel = $("#p-src"); sel._srcs = playable;
+    if (playable.length > 1) { sel.hidden = false; sel.innerHTML = playable.map((s, i) => `<option value="${i}">${esc(s.label || s.quality || "Source " + (i + 1))}</option>`).join(""); }
+    let last = 0;
+    v.onloadedmetadata = () => { const t = db.get(key, 0); if (t > 10 && t < v.duration - 30) v.currentTime = t; v.playbackRate = +$("#p-speed").value; pmsg(""); };
+    v.ontimeupdate = () => { if (Date.now() - last > 5000) { last = Date.now(); db.set(key, v.currentTime); } };
+    v.onended = () => { db.set(key, 0); if (num < w.count) playEpisode(num + 1); };
+    v.onerror = () => pmsg("Couldn't play this source (the host may block cross-site playback). Try another source.");
+    await attach(v, playable[0]);
+  } catch (err) { pmsg("Couldn't start playback: " + err.message); }
+}
+el.disc.addEventListener("change", (e) => {
+  if (e.target.id === "p-src") attach($("#vid"), e.target._srcs[+e.target.value]);
+  else if (e.target.id === "p-speed") $("#vid").playbackRate = +e.target.value;
+});
+
 el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
   const open = t.closest("[data-open]"); if (open) { d.hidden = true; return newTab(open.dataset.open); }
+  if (t.closest("#p-close")) { closePlayer(); if (watching) d.hidden = false; return; }
+  const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || playEpisode(+pn.dataset.pn);
+  const ep = t.closest("[data-ep]"); if (ep) return playEpisode(+ep.dataset.ep);
   if (t.closest("#r-close")) { $("#reader").hidden = true; return; }
   const rn = t.closest("[data-rn]"); if (rn) return rn.disabled || openChapter(+rn.dataset.rn);
   const ch = t.closest("[data-ch]"); if (ch) return openChapter(+ch.dataset.ch);
   if (t.closest(".dx") || t === d) { d.hidden = true; return; }
   const c = t.closest(".mcard"); if (!c) return;
   if (active.page === "manga") return mangaDetail(c.dataset.id);
-  if (active.page === "watch") return newTab("https://archive.org/embed/" + encodeURIComponent(c.dataset.id));
   animeDetail(+c.dataset.id);
 });
 function openPage(p) {

@@ -1,12 +1,14 @@
 import { createServer } from "node:http";
 import { createReadStream, statSync } from "node:fs";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { server as wisp, logging } from "@mercuryworkshop/wisp-js/server";
 import { scramjetPath } from "@mercuryworkshop/scramjet/path";
 import { libcurlPath } from "@mercuryworkshop/libcurl-transport";
 import { baremuxPath } from "@mercuryworkshop/bare-mux/node";
 
+const hlsPath = dirname(createRequire(import.meta.url).resolve("hls.js"));
 const publicPath = resolve(fileURLToPath(new URL("../public/", import.meta.url)));
 
 // Wisp = the tunnel your browser uses to reach the open internet via THIS server.
@@ -23,7 +25,7 @@ const MIME = {
   ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".map": "application/json", ".webmanifest": "application/manifest+json",
 };
 // URL prefix -> folder on disk (first match wins, "/" last)
-const MOUNTS = [["/scram/", scramjetPath], ["/libcurl/", libcurlPath], ["/baremux/", baremuxPath], ["/", publicPath]];
+const MOUNTS = [["/scram/", scramjetPath], ["/libcurl/", libcurlPath], ["/baremux/", baremuxPath], ["/hls/", hlsPath], ["/", publicPath]];
 
 function findFile(pathname) {
   for (const [prefix, root] of MOUNTS) {
@@ -59,31 +61,25 @@ async function anilist(req, res) {
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"errors":[{"message":"upstream error"}]}'); }
 }
-// Generic cached JSON relay (MangaDex / Internet Archive)
-async function relay(res, url, ttl = 300e3) {
+// Generic cached JSON relay (MangaDex and the optional streaming source API)
+async function relay(res, url, ttl = 300e3, extra = {}) {
   const json = { "Content-Type": "application/json" };
   try {
     const hit = cache.get(url);
     if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
-    const r = await fetch(url, { headers: { "User-Agent": "Cloudora/0.3 (self-hosted proxy browser)", Accept: "application/json" } });
+    const r = await fetch(url, { headers: { "User-Agent": "Cloudora/0.3 (self-hosted proxy browser)", Accept: "application/json", ...extra } });
     const data = await r.text();
     if (r.ok && ttl) { if (cache.size > 300) cache.clear(); cache.set(url, { data, exp: Date.now() + ttl }); }
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"result":"error","errors":[{"title":"upstream error"}]}'); }
 }
 const MANGADEX = process.env.MANGADEX_URL || "https://api.mangadex.org";
-const ARCHIVE = process.env.ARCHIVE_URL || "https://archive.org";
+// Optional streaming source API (set STREAM_API on the server; see README for the JSON contract)
+const STREAM_API = (process.env.STREAM_API || "").replace(/\/+$/, "");
+const STREAM_HEADERS = process.env.STREAM_API_KEY ? { Authorization: "Bearer " + process.env.STREAM_API_KEY } : {};
 const MD_PATH = /^\/(manga|manga\/[0-9a-f-]{36}|manga\/[0-9a-f-]{36}\/feed|at-home\/server\/[0-9a-f-]{36})$/;
-function archive(res, q) {
-  const base = "mediatype:movies AND (collection:feature_films OR collection:animationandcartoons OR collection:classic_tv)";
-  const clean = q.replace(/[^\w\s'-]/g, " ").trim();
-  const p = new URLSearchParams({ q: clean ? `(${clean}) AND ${base}` : base, rows: "30", output: "json", sort: "downloads desc" });
-  for (const f of ["identifier", "title", "year"]) p.append("fl[]", f);
-  return relay(res, ARCHIVE + "/advancedsearch.php?" + p, 600e3);
-}
-
 // Cover/thumbnail art only, from these hosts
-const IMG_HOSTS = ["anilist.co", "mangadex.org", "archive.org"];
+const IMG_HOSTS = ["anilist.co", "mangadex.org"];
 const okHost = (h) => IMG_HOSTS.some((d) => h === d || h.endsWith("." + d));
 async function image(res, u) {
   try {
@@ -103,12 +99,23 @@ const server = createServer((req, res) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
+  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API })); }
+  if (STREAM_API && req.method === "GET" && (u.pathname === "/api/stream/episodes" || u.pathname === "/api/stream/sources")) {
+    const q = new URLSearchParams();
+    for (const k of ["anilist_id", "episode"]) {
+      const v = u.searchParams.get(k);
+      if (v === null) continue;
+      if (!/^\d{1,7}$/.test(v)) { res.writeHead(400); return res.end(); }
+      q.set(k, v);
+    }
+    const eps = u.pathname.endsWith("episodes");
+    return relay(res, `${STREAM_API}/${eps ? "episodes" : "sources"}?${q}`, eps ? 60e3 : 0, STREAM_HEADERS);
+  }
   if (req.method === "GET" && u.pathname.startsWith("/api/md/")) {
     const p = u.pathname.slice(7);
     if (MD_PATH.test(p)) return relay(res, MANGADEX + p + u.search, p.startsWith("/at-home") ? 0 : 300e3);
     res.writeHead(404); return res.end();
   }
-  if (u.pathname === "/api/archive" && req.method === "GET") return archive(res, (u.searchParams.get("q") || "").slice(0, 100));
   if (u.pathname === "/img" && req.method === "GET") return image(res, u.searchParams.get("u") || "");
   let file = null;
   try { file = findFile(decodeURIComponent(new URL(req.url, "http://x").pathname)); } catch {}

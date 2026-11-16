@@ -10,11 +10,10 @@ by **your server**, not your device, and rendered with Scramjet.
 - **Ad & tracker blocker** (Settings > Privacy): the service worker blocks known ad/tracker
   domains (list in `public/sw.js`) and hides common ad boxes. Lighter than uBlock Origin;
   it will not remove in-stream video ads (e.g. YouTube).
-- **Anime:** trending, popular, search and details from AniList, with official "where to watch" links
+- **Anime:** trending, popular, search and details from AniList, official "where to watch" links, and a **built-in player** (HLS/MP4, subtitles, speed, resume, auto-next) when you configure a source API (below)
 - **Manga:** browse, search and **read in the app** using the public MangaDex API
-- **Watch:** free public-domain films, cartoons and classic TV from the Internet Archive
 - Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
-- The server needs outbound access to graphql.anilist.co, api.mangadex.org, archive.org and their
+- The server needs outbound access to graphql.anilist.co, api.mangadex.org and their
   image hosts. Manga page images load straight from MangaDex's servers into the visitor's browser.
 
 ## Run
@@ -45,3 +44,20 @@ Free instances sleep after ~15 min idle, so the first visit afterward is slow.
 - Datacenter IPs trigger CAPTCHAs/blocks on Google, YouTube, etc. A home/residential host works better.
 - Edit `wisp.options` in `src/index.js` to block hosts or change DNS.
 - Credit: Mercury Workshop (Scramjet, bare-mux, libcurl-transport, wisp-js), AGPL/MIT per package.
+
+## Player source API (optional)
+The built-in player does not ship with any content sources. To enable it, set these environment
+variables on your server (e.g. in Render > Environment) to point at an API **you are licensed to use**
+(your own media server, a licensed provider, etc.):
+
+    STREAM_API=https://your-api.example.com      # base URL, required
+    STREAM_API_KEY=...                           # optional, sent as "Authorization: Bearer ..."
+
+Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expects:
+
+    { "sources":   [ { "url": "https://.../master.m3u8", "type": "hls",  "label": "1080p" },
+                     { "url": "https://.../ep1.mp4",      "type": "mp4",  "label": "720p"  } ],
+      "subtitles": [ { "url": "https://.../en.vtt", "lang": "en", "label": "English" } ] }
+
+`type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
+cross-site playback (CORS). With no `STREAM_API` set, anime pages show official links only.
