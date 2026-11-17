@@ -61,6 +61,9 @@ variables on your server (e.g. in Render > Environment) to point at an API **you
     STREAM_API=https://your-api.example.com      # base URL, required
     STREAM_API_KEY=...                           # optional, sent as "Authorization: Bearer ..."
 
+For compatibility with anime-provider deployments, `ANIME_API_URL` and
+`ANIME_API_KEY` may be used as aliases for `STREAM_API` and `STREAM_API_KEY`.
+
 Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expects:
 
     { "sources":   [ { "url": "https://.../master.m3u8", "type": "hls",  "label": "1080p" },
@@ -69,6 +72,14 @@ Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expect
 
 Each source may include `"official": true` (shows an **Official** badge; the default is **Unofficial**). Set `STREAM_API_OFFICIAL=1` if your whole API is an official one. `type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
 cross-site playback (CORS). With no `STREAM_API` set, anime pages show official links only.
+
+## Manga provider
+
+Manga search, chapter lists and chapter artwork use the public MangaDex API. The
+default is `https://api.mangadex.org`; set `MANGADEX_URL` or `MANGA_API_URL` to
+use another compatible MangaDex API deployment. Chapter artwork is downloaded
+through Cloudora's same-origin `/api/md-image` relay, subject to MangaDex host
+validation.
 
 ## Ad-block lists
 `adblock-src/` holds the raw lists (taken from uBlock Origin 1.75.0's bundled assets) and

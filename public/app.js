@@ -412,7 +412,7 @@ async function openChapter(i) {
     <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages"><p class="muted">Loading pages…</p></div>`;
   try {
     const s = await md(`/at-home/server/${c.id}`);
-    $("#reader .rpages").innerHTML = s.chapter.data.map((f) => `<img crossorigin="anonymous" referrerpolicy="no-referrer" loading="lazy" alt="Loading…" src="${esc(`${s.baseUrl}/data/${s.chapter.hash}/${f}`)}">`).join("") +
+    $("#reader .rpages").innerHTML = s.chapter.data.map((f) => `<img referrerpolicy="no-referrer" loading="lazy" alt="Loading…" src="${esc(`/api/md-image?u=${encodeURIComponent(`${s.baseUrl}/data/${s.chapter.hash}/${f}`)}`)}">`).join("") +
       `<p class="muted">Pages not showing? <button class="chip" data-open="https://mangadex.org/chapter/${c.id}">Open this chapter on MangaDex</button><br>Manga from MangaDex. Please support the creators.</p>`;
   } catch (err) { $("#reader .rpages").innerHTML = `<p class="muted">Couldn't load this chapter (${esc(err.message)}).</p>`; }
 }

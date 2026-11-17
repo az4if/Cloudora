@@ -76,13 +76,15 @@ async function relay(res, url, ttl = 300e3, extra = {}) {
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"result":"error","errors":[{"title":"upstream error"}]}'); }
 }
-const MANGADEX = process.env.MANGADEX_URL || "https://api.mangadex.org";
-// Optional streaming source API (set STREAM_API on the server; see README for the JSON contract)
-const STREAM_API = (process.env.STREAM_API || "").replace(/\/+$/, "");
-const STREAM_HEADERS = process.env.STREAM_API_KEY ? { Authorization: "Bearer " + process.env.STREAM_API_KEY } : {};
+const MANGADEX = (process.env.MANGADEX_URL || process.env.MANGA_API_URL || "https://api.mangadex.org").replace(/\/+$/, "");
+// Optional licensed anime source API (set STREAM_API on the server; see README for the JSON contract)
+const STREAM_API = (process.env.STREAM_API || process.env.ANIME_API_URL || "").replace(/\/+$/, "");
+const STREAM_HEADERS = (process.env.STREAM_API_KEY || process.env.ANIME_API_KEY)
+  ? { Authorization: "Bearer " + (process.env.STREAM_API_KEY || process.env.ANIME_API_KEY) }
+  : {};
 const MD_PATH = /^\/(manga|manga\/[0-9a-f-]{36}|manga\/[0-9a-f-]{36}\/feed|at-home\/server\/[0-9a-f-]{36})$/;
 // Cover/thumbnail art only, from these hosts
-const IMG_HOSTS = ["anilist.co", "mangadex.org"];
+const IMG_HOSTS = ["anilist.co", "mangadex.org", "mangadex.network"];
 const okHost = (h) => IMG_HOSTS.some((d) => h === d || h.endsWith("." + d));
 async function image(res, u) {
   try {
@@ -140,7 +142,8 @@ const server = createServer((req, res) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
-  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || "") })); }
+  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || ""), manga: true, anilist: true })); }
+  if (u.pathname === "/api/health") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, stream: !!STREAM_API, manga: true, adblock: true })); }
   if (STREAM_API && req.method === "GET" && (u.pathname === "/api/stream/episodes" || u.pathname === "/api/stream/sources")) {
     const q = new URLSearchParams();
     for (const k of ["anilist_id", "episode"]) {
@@ -157,7 +160,7 @@ const server = createServer((req, res) => {
     if (MD_PATH.test(p)) return relay(res, MANGADEX + p + u.search, p.startsWith("/at-home") ? 0 : 300e3);
     res.writeHead(404); return res.end();
   }
-  if (u.pathname === "/img" && req.method === "GET") return image(res, u.searchParams.get("u") || "");
+  if ((u.pathname === "/img" || u.pathname === "/api/md-image") && req.method === "GET") return image(res, u.searchParams.get("u") || "");
   if (u.pathname === "/api/suggest" && req.method === "GET") return suggest(res, u.searchParams.get("q") || "");
   let file = null;
   try { file = findFile(decodeURIComponent(new URL(req.url, "http://x").pathname)); } catch {}
