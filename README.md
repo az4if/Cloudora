@@ -117,4 +117,21 @@ Never set it on a public server.
   through `scripts/curl_fetch.py`, which uses [curl_cffi](https://curl-cffi.readthedocs.io/) to send a real Chrome TLS/HTTP2 fingerprint.
   Needs `python3` and `pip install -r requirements.txt` on the server; if missing it is skipped. `CURL_CFFI=0` disables it,
   `CURL_CFFI=1` uses it for every request, `CURL_IMPERSONATE=chrome131` picks another browser, `PYTHON=` sets the binary.
+- **Watch page:** just a Back button, the player, the episode list (with the 100-episode batch dropdown) and the server list. Pick another episode or server without leaving it.
 - **Source API first:** when `STREAM_API` is set, its direct HLS/MP4 sources are tried first and listed above the embed servers.
+
+## Real-browser fetching for normal browsing
+The default tunnel (libcurl.js in your browser) does its own TLS, so sites see a curl-style TLS/HTTP2 fingerprint even with a perfect
+user agent. With Python + curl_cffi installed on the server (`pip install -r requirements.txt`), Cloudora instead sends each proxied
+HTTP request to the server (`POST /api/proxy`), which fetches it through `scripts/curl_proxy.py` with a real browser's TLS
+(JA3/JA4), HTTP/2 settings and header order.
+- The browser profile follows your own User-Agent (Chrome/Edge/Brave/Opera -> Chrome, Firefox -> Firefox, Safari/iOS -> Safari), so TLS,
+  headers and `navigator.userAgent` agree. Your real headers (sec-ch-ua, sec-fetch-*, cookies) are forwarded; cookies and redirects stay
+  with the page, nothing is kept server-side.
+- Same network rules as the Wisp tunnel: no localhost/private/link-local/bare-IP targets (the resolved address is pinned so DNS can't be
+  switched mid-request), header-injection checks, request size and concurrency limits.
+- Settings > "Real-browser fetching" turns it on/off per visitor (shown only when the server supports it). Without Python/curl_cffi it
+  silently stays on libcurl.js. WebSockets always use Wisp.
+- Env: `CLOUDORA_IMPERSONATE=0` disable, `IMPERSONATE_PROFILE=chrome142` force a profile, `CLOUDORA_DEBUG=1` log each proxied request.
+- Limits: it can't change what the *page's own JavaScript* reveals (that already runs in your real browser), and sites that need
+  a solved CAPTCHA/JS challenge will still show it. Everything goes through your server's IP, so a datacenter IP can still be flagged.

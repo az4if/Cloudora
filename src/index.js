@@ -9,6 +9,7 @@ import { scramjetPath } from "@mercuryworkshop/scramjet/path";
 import { libcurlPath } from "@mercuryworkshop/libcurl-transport";
 import { baremuxPath } from "@mercuryworkshop/bare-mux/node";
 import { upstream, curlCffiAvailable } from "./upstream.js";
+import { Impersonator } from "./impersonate.js";
 
 const hlsPath = dirname(createRequire(import.meta.url).resolve("hls.js"));
 const publicPath = resolve(fileURLToPath(new URL("../public/", import.meta.url)));
@@ -22,6 +23,15 @@ Object.assign(wisp.options, {
 });
 // For local development/testing only: lets the tunnel reach 127.0.0.1 / LAN hosts. Never enable on a public server.
 if (process.env.CLOUDORA_ALLOW_LOCAL === "1") Object.assign(wisp.options, { allow_loopback_ips: true, allow_private_ips: true, allow_direct_ip: true });
+
+// Real-browser transport (curl_cffi: Chrome/Firefox/Safari TLS + HTTP/2 fingerprints). Same network policy as Wisp.
+const impersonator = new Impersonator({
+  dnsServers: wisp.options.dns_servers || [],
+  blacklist: wisp.options.hostname_blacklist || [],
+  allowLocal: process.env.CLOUDORA_ALLOW_LOCAL === "1",
+});
+const impersonateOn = impersonator.available();
+impersonateOn.then((ok) => { if (ok) impersonator.start().catch((e) => console.warn("[cloudora] real-browser fetcher failed to start:", e.message)); });
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -150,8 +160,9 @@ const server = createServer((req, res) => {
   }
   res.setHeader("Vary", "User-Agent");
   const u = new URL(req.url, "http://x");
+  if (u.pathname === "/api/proxy") return impersonator.handle(req, res);
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
-  if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || ""), manga: true, anilist: true })); }
+  if (u.pathname === "/api/config") return impersonateOn.then((imp) => { res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || ""), manga: true, anilist: true, impersonate: imp })); });
   if (u.pathname === "/api/health") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, stream: !!STREAM_API, manga: true, adblock: true })); }
   if (STREAM_API && req.method === "GET" && (u.pathname === "/api/stream/episodes" || u.pathname === "/api/stream/sources")) {
     const q = new URLSearchParams();
@@ -188,4 +199,4 @@ server.on("upgrade", (req, socket, head) => {
 const port = Number(process.env.PORT) || 8080;
 server.listen(port, "0.0.0.0", () => console.log(`Cloudora running: http://localhost:${port}`));
 
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => server.close(() => process.exit(0)));
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { impersonator.stop(); server.close(() => process.exit(0)); });

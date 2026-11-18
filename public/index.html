@@ -88,6 +88,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
       <h4>Privacy</h4>
       <div class="set"><div><b>Block ads &amp; trackers</b><small id="filter-info">EasyList, EasyPrivacy and uBlock filters: network blocking, element hiding, scriptlets and a popup guard</small></div><button class="switch" data-k="adblock" role="switch"></button></div>
       <div id="allowbox" hidden><small>Paused on these sites</small><div class="chips" id="allowlist"></div></div>
+      <div class="set" id="imp-row" hidden><div><b>Real-browser fetching</b><small>The server fetches pages with a real Chrome/Firefox/Safari TLS fingerprint (matched to your browser) so fewer sites treat the proxy as a bot</small></div><button class="switch" data-k="impersonate" role="switch"></button></div>
       <h4>Browser</h4>
       <div class="set"><div><b>Restore tabs on start</b><small>Reopen the tabs you had last time</small></div><button class="switch" data-k="restore" role="switch"></button></div>
       <div class="set"><div><b>Save history</b><small>Powers History and address-bar suggestions</small></div><button class="switch" data-k="history" role="switch"></button></div>

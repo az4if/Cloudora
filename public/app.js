@@ -37,7 +37,7 @@ const el = { app: $("#app"), tabs: $("#tablist"), views: $("#views"), home: $("#
 let tabs = [], active = null, scramjet = null, ready = false, nextId = 1, dragTab = null;
 const closed = []; // recently closed tabs, for Reopen closed tab
 let engine = db.get("engine", "DuckDuckGo");
-const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
+const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, impersonate: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
@@ -79,12 +79,23 @@ async function boot() {
   await scramjet.init(); // must run before the service worker is registered
   await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
-  const conn = new BareMux.BareMuxConnection("/baremux/worker.js");
-  const wisp = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wisp/";
-  if ((await conn.getTransport()) !== "/libcurl/index.mjs") await conn.setTransport("/libcurl/index.mjs", [{ websocket: wisp }]);
+  bareConn = new BareMux.BareMuxConnection("/baremux/worker.js");
+  try { serverImpersonate = !!(await (await fetch("/api/config", { cache: "no-store" })).json()).impersonate; } catch {}
+  await applyTransport();
   ready = true;
-  el.status.textContent = "Connected";
   syncAdblock();
+}
+// HTTP goes through the server's curl_cffi fetcher (real Chrome/Firefox/Safari TLS fingerprint) when the server has it and the
+// setting is on; otherwise through libcurl.js in this browser. WebSockets always use the Wisp tunnel.
+let bareConn = null, serverImpersonate = false;
+async function applyTransport() {
+  const real = serverImpersonate && prefs.impersonate;
+  const want = real ? "/transport-impersonate.mjs" : "/libcurl/index.mjs";
+  const wisp = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/wisp/";
+  if ((await bareConn.getTransport()) !== want) await bareConn.setTransport(want, [{ websocket: wisp }]);
+  el.status.textContent = "Connected";
+  el.status.title = real ? "Requests are sent with a real browser's TLS fingerprint" : "Requests are sent from your browser through the tunnel";
+  const row = $("#imp-row"); if (row) row.hidden = !serverImpersonate;
 }
 
 function newTab(url, page = "home") {
@@ -299,6 +310,7 @@ document.querySelectorAll(".switch").forEach((b) => (b.onclick = () => {
   document.documentElement.classList.toggle("noglow", !prefs.glow);
   if (k === "adblock") { syncAdblock(); tabs.forEach((t) => t.frame && applyCosmetics(t.frame.frame, t.url)); render(); }
   if (k === "restore") persistSession();
+  if (k === "impersonate" && ready) applyTransport().then(() => toast("Applies to new requests. Reload open tabs to use it."));
 }));
 $("#engine").innerHTML = Object.keys(ENGINES).map((n) => `<option${n === engine ? " selected" : ""}>${n}</option>`).join("");
 $("#engine").onchange = (e) => { engine = e.target.value; db.set("engine", engine); };
@@ -471,14 +483,19 @@ addEventListener("resize", closeDD);
 const BATCH = 100;
 const epRange = (b, count) => [b * BATCH + 1, Math.min(count, (b + 1) * BATCH)];
 function renderEps() {
-  const w = watching, box = $("#eps"); if (!w || !box) return;
+  const w = watching; if (!w) return;
   const [a, z] = epRange(w.batch, w.count);
-  box.innerHTML = Array.from({ length: z - a + 1 }, (_, i) => `<button class="chip${a + i === w.last ? " cur" : ""}" data-ep="${a + i}">${a + i}</button>`).join("");
-  const l = $("#ep-batch-l"); if (l) l.textContent = `Episodes ${a} – ${z}`;
+  const html = Array.from({ length: z - a + 1 }, (_, i) => `<button class="chip${a + i === w.last ? " cur" : ""}" data-ep="${a + i}">${a + i}</button>`).join("");
+  for (const [list, label] of [["#eps", "#ep-batch-l"], ["#w-eps", "#w-batch-l"]]) {
+    const box = $(list); if (!box) continue;
+    box.innerHTML = html;
+    const l = $(label); if (l) l.textContent = `Episodes ${a} – ${z}`;
+    const cur = box.querySelector(".cur"); if (cur) box.scrollTop = Math.max(0, cur.offsetTop - box.offsetTop - box.clientHeight / 2 + cur.offsetHeight / 2);
+  }
 }
 function pickBatch(btn) {
   const w = watching, n = Math.ceil(w.count / BATCH);
-  openDD(btn, Array.from({ length: n }, (_, b) => { const [a, z] = epRange(b, w.count); return [b, `${a} – ${z}`, w.last >= a && w.last <= z ? "watching" : ""]; }), w.batch, (b) => { w.batch = b; renderEps(); $("#eps").scrollTop = 0; });
+  openDD(btn, Array.from({ length: n }, (_, b) => { const [a, z] = epRange(b, w.count); return [b, `${a} – ${z}`, w.last >= a && w.last <= z ? "watching" : ""]; }), w.batch, (b) => { w.batch = b; renderEps(); });
 }
 
 async function animeDetail(id) {
@@ -579,15 +596,20 @@ async function playEpisode(num) {
   pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num, ep: num });
   closeDD(); clearTimeout(embedTimer);
   $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0;
-  pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close" title="Back to episodes">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
-    <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
+  const many = w.count > BATCH;
+  pl.innerHTML = `<div class="rhead"><button class="btn back" id="p-close">${ic("back")}Back</button><b>${esc(w.title)} · Episode ${num}</b></div>
     <div class="pbody">
       <div class="pstage" id="pstage"><video id="vid" controls playsinline autoplay crossorigin="anonymous" hidden></video><div class="pload" id="p-load">${spinner("Finding sources…")}</div></div>
       <div class="pbar"><span id="p-badge"></span><span class="muted" id="p-msg"></span><span class="grow"></span>
         <div class="seg sm" id="p-speed" hidden>${SPEEDS.map((s) => `<button type="button" data-spd="${s}"${s === 1 ? ' class="on"' : ""}>${s}×</button>`).join("")}</div>
-        <button type="button" class="btn" id="p-tab" hidden>${ic("ext")}Open in tab</button></div>
-      <div class="srvbox"><h4>Servers</h4><div class="srvlist" id="p-servers" role="menu"></div></div>
+        <button type="button" class="btn" id="p-tab" hidden>${ic("ext")}Open in tab</button>
+        <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
+      <div class="pgrid">
+        <div class="pbox"><div class="phead"><h4>Episodes</h4>${many ? `<button type="button" class="dd-btn" id="w-batch" aria-haspopup="listbox" aria-expanded="false"><span id="w-batch-l"></span>${ic("down")}</button>` : ""}<small class="muted">${w.count} total</small></div><div class="chlist eps" id="w-eps"></div></div>
+        <div class="pbox"><div class="phead"><h4>Servers</h4></div><div class="srvlist" id="p-servers" role="menu"></div></div>
+      </div>
     </div>`;
+  renderEps();
   const v = $("#vid"), ids = { anilist: w.id, mal: w.malId, ep: num, lang: "sub" }, api = window.CloudoraVideoProviders;
   const items = [];
   if (streamOn) {
@@ -627,8 +649,8 @@ el.disc.addEventListener("click", (e) => {
   const hd = t.closest("[data-hdel]"); if (hd) { e.stopPropagation(); return histRemove(+hd.dataset.hdel); }
   const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
   const open = t.closest("[data-open]"); if (open) { d.hidden = true; return newTab(open.dataset.open); }
-  if (t.closest("#p-close")) { closePlayer(); if (watching) d.hidden = false; return; }
-  const eb = t.closest("#ep-batch"); if (eb) return pickBatch(eb);
+  if (t.closest("#p-close")) return closePlayer();
+  const eb = t.closest("#ep-batch, #w-batch"); if (eb) return pickBatch(eb);
   const sv = t.closest("[data-srv]"); if (sv) return useServer(+sv.dataset.srv);
   const sp = t.closest("[data-spd]"); if (sp) { $("#vid").playbackRate = +sp.dataset.spd; sp.parentNode.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === sp)); return; }
   const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || playEpisode(+pn.dataset.pn);
