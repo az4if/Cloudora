@@ -138,6 +138,7 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 }
 .pbody{display:flex;flex-direction:column;gap:10px;width:min(1100px,100%);margin:0 auto;padding:16px}
 #vid{width:100%;aspect-ratio:16/9;max-height:74vh;border-radius:14px;background:#000}
+#p-embed{width:min(1100px,100%);aspect-ratio:16/9;max-height:74vh;border:0;border-radius:14px;background:#000}
 .prow{display:flex;align-items:center;gap:10px}
 .rhead select,.prow select{padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)}
 .chlist.eps .chip{min-width:44px;text-align:center}

@@ -323,7 +323,7 @@ document.addEventListener("pointermove", (e) => {
 // Discover pages. Anime: AniList (+ built-in player when a source API is configured). Manga: MangaDex (read here).
 const FIELDS = "id title{romaji english} coverImage{large} averageScore format episodes chapters";
 const LIST = `query($t:MediaType,$s:[MediaSort],$q:String){Page(perPage:20){media(type:$t,sort:$s,search:$q,isAdult:false){${FIELDS}}}}`;
-const ONE = `query($id:Int){Media(id:$id){${FIELDS} type description genres siteUrl nextAiringEpisode{episode} externalLinks{url site type}}}`;
+const ONE = `query($id:Int){Media(id:$id){${FIELDS} idMal type description genres siteUrl nextAiringEpisode{episode} externalLinks{url site type}}}`;
 async function gql(query, variables) {
   const r = await fetch("/api/anilist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }) });
   const j = await r.json();
@@ -430,8 +430,8 @@ async function animeDetail(id) {
     const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
     const count = Math.min(300, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
-    watching = { id, title: mname(m), count, cover: m.coverImage.large };
-    const play = streamOn && count ? `<h4>Play here ${badge(streamOfficial)}</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
+    watching = { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large };
+    const play = count ? `<h4>Play here ${badge(streamOfficial)}</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
     d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div class="dbody">
       <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
       <div class="chips" style="margin-top:8px">${(m.genres || []).map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
@@ -464,8 +464,24 @@ async function playEpisode(num) {
   pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
     <select id="p-speed">${[0.75, 1, 1.25, 1.5, 2].map((s) => `<option value="${s}"${s === 1 ? " selected" : ""}>${s}×</option>`).join("")}</select>
     <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
-    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><div class="prow"><select id="p-src" hidden></select><span id="p-badge"></span><span class="muted" id="p-msg">Loading source…</span></div></div>`;
+    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><iframe id="p-embed" hidden allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe><div class="prow"><select id="p-src" hidden></select><span id="p-badge"></span><span class="muted" id="p-msg">Loading source…</span></div></div>`;
   const v = $("#vid");
+  const providerApi = window.CloudoraVideoProviders;
+  const embedServers = providerApi.available({ anilist: w.id, mal: w.malId, ep: num, lang: "sub" });
+  if (embedServers.length) {
+    const sel = $("#p-src");
+    sel.hidden = false;
+    sel._srcs = [];
+    sel._embeds = embedServers;
+    sel.dataset.ep = String(num);
+    sel.innerHTML = embedServers.map((server) => `<option value="${esc(server.name)}">${esc(server.name)}</option>`).join("");
+    v.hidden = true;
+    const frame = $("#p-embed");
+    frame.hidden = false;
+    frame.src = providerApi.build(embedServers[0], { anilist: w.id, mal: w.malId, ep: num, lang: "sub" });
+    pmsg("");
+    return;
+  }
   try {
     const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "source API error " + r.status);
@@ -490,7 +506,21 @@ async function playEpisode(num) {
   } catch (err) { pmsg("Couldn't start playback: " + err.message); }
 }
 el.disc.addEventListener("change", (e) => {
-  if (e.target.id === "p-src") attach($("#vid"), e.target._srcs[+e.target.value]);
+  if (e.target.id === "p-src") {
+    const sel = e.target;
+    if (sel._embeds) {
+      const server = sel._embeds.find((x) => x.name === sel.value);
+      const frame = $("#p-embed"), v = $("#vid");
+      if (server && frame && watching) {
+        v.hidden = true; frame.hidden = false;
+        frame.src = window.CloudoraVideoProviders.build(server, {
+          anilist: watching.id, mal: watching.malId, ep: sel.dataset.ep || 1, lang: "sub",
+        });
+      }
+    } else if (sel._srcs) {
+      attach($("#vid"), sel._srcs[+sel.value]);
+    }
+  }
   else if (e.target.id === "p-speed") $("#vid").playbackRate = +e.target.value;
 });
 

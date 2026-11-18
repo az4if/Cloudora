@@ -54,7 +54,9 @@ Free instances sleep after ~15 min idle, so the first visit afterward is slow.
 - Credit: Mercury Workshop (Scramjet, bare-mux, libcurl-transport, wisp-js), AGPL/MIT per package.
 
 ## Player source API (optional)
-The built-in player does not ship with any content sources. To enable it, set these environment
+The anime player also includes 24 built-in iframe providers. AniList and MAL IDs are supplied automatically by Cloudora.
+
+The built-in player includes the iframe providers above. To add a licensed HLS/MP4 source API, set these environment
 variables on your server (e.g. in Render > Environment) to point at an API **you are licensed to use**
 (your own media server, a licensed provider, etc.):
 
