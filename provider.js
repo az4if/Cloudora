@@ -25,6 +25,32 @@ export const VIDEO_SERVERS = [
   { name: "xom", url: "https://anixo.buzz/embed/mal/{mal}/{ep}?track={lang}" },
 ];
 
+export const MANGA_SERVERS = [
+  { name: "MangaDex", url: "https://mangadex.org/title/{id}" },
+  { name: "Comick", url: "https://comick.io/search?q={q}" },
+  { name: "MangaFire", url: "https://mangafire.to/filter?keyword={q}" },
+  { name: "MangaBuddy", url: "https://mangabuddy.com/search/{slug}" },
+  { name: "MangaNato", url: "https://www.natomanga.com/search/story/{slug}" },
+  { name: "Bato", url: "https://bato.to/search?word={q}" },
+  { name: "MangaPark", url: "https://mangapark.net/search?word={q}" },
+  { name: "Weeb Central", url: "https://weebcentral.com/search?text={q}" },
+];
+
+export function buildMangaServerUrl(server, { id, title } = {}) {
+  if (!server || typeof server.url !== "string") return "";
+  const text = String(title || "").trim();
+  const slug = text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const values = {
+    id: id ? encodeURIComponent(String(id)) : "",
+    q: text ? encodeURIComponent(text) : "",
+    slug: slug ? encodeURIComponent(slug) : "",
+  };
+  if ((server.url.includes("{id}") && !values.id) ||
+      (server.url.includes("{q}") && !values.q) ||
+      (server.url.includes("{slug}") && !values.slug)) return "";
+  return server.url.replace(/\{(id|q|slug)\}/g, (_match, key) => values[key] ?? "");
+}
+
 export function buildVideoServerUrl(server, { ani, mal, ep, lang }) {
   if (!server || typeof server.url !== "string") return "";
   const values = {

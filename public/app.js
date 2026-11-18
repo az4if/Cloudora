@@ -389,8 +389,14 @@ async function mangaDetail(id) {
   d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div class="dbody"><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
     <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p>
     <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || '<span class="muted">Loading…</span>'}</div>
+    <h4>Unofficial sources ${badge(false)}</h4><div class="chips" id="m-unofficial"></div>
     <h4>Read here ${badge(false)}</h4><small class="muted">Community translations hosted on MangaDex.</small><div class="chlist" id="chs"><p class="muted">Loading…</p></div>
     <h4>Info</h4><div class="chips">${chip("https://mangadex.org/title/" + m.id, "MangaDex")}${L.al ? chip("https://anilist.co/manga/" + L.al, "AniList") : ""}</div></div></div>`;
+  const providers = window.CloudoraMangaProviders;
+  if (providers) $("#m-unofficial").innerHTML = providers.servers.map((server) => {
+    const url = providers.build(server, { id: m.id, title: mTitle(m) });
+    return url ? chip(url, server.name) : "";
+  }).join("");
   try {
     const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=1&contentRating[]=safe&contentRating[]=suggestive`);
     const seenH = new Set(), seenO = new Set();

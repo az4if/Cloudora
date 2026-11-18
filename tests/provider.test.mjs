@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   availableVideoServers,
+  buildMangaServerUrl,
   buildVideoServerUrl,
+  MANGA_SERVERS,
   VIDEO_SERVERS,
 } from "../provider.js";
 
@@ -38,4 +40,25 @@ test("filters embeds by available anime IDs", () => {
   assert.ok(availableVideoServers({ ani: 16498 }).every(
     (server) => server.url.includes("{ani}") || !server.url.includes("{mal}")
   ));
+});
+
+test("manga provider names are unique", () => {
+  const names = MANGA_SERVERS.map((server) => server.name);
+  assert.equal(new Set(names).size, names.length);
+});
+
+test("builds MangaDex and search provider URLs", () => {
+  assert.equal(
+    buildMangaServerUrl(MANGA_SERVERS.find((server) => server.name === "MangaDex"), {
+      id: "1234abcd",
+      title: "Test Manga",
+    }),
+    "https://mangadex.org/title/1234abcd",
+  );
+  assert.equal(
+    buildMangaServerUrl(MANGA_SERVERS.find((server) => server.name === "Comick"), {
+      title: "Test Manga",
+    }),
+    "https://comick.io/search?q=Test%20Manga",
+  );
 });

@@ -83,6 +83,11 @@ use another compatible MangaDex API deployment. Chapter artwork is downloaded
 through Cloudora's same-origin `/api/md-image` relay, subject to MangaDex host
 validation.
 
+Manga details include named unofficial external search/source buttons for
+MangaDex, Comick, MangaFire, MangaBuddy, MangaNato, Bato, MangaPark and Weeb
+Central. These buttons open external sites and are separate from official
+publisher/store links.
+
 ## Ad-block lists
 `adblock-src/` holds the raw lists (taken from uBlock Origin 1.75.0's bundled assets) and
 `scripts/build-filters.mjs` compiles them into `public/adblock/` (`net.json`, `cosmetic.json`, `generic.css`,

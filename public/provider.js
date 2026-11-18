@@ -48,3 +48,33 @@ window.CloudoraVideoProviders = (() => {
 
   return { servers, build, available };
 })();
+
+window.CloudoraMangaProviders = (() => {
+  const servers = [
+    { name: "MangaDex", url: "https://mangadex.org/title/{id}" },
+    { name: "Comick", url: "https://comick.io/search?q={q}" },
+    { name: "MangaFire", url: "https://mangafire.to/filter?keyword={q}" },
+    { name: "MangaBuddy", url: "https://mangabuddy.com/search/{slug}" },
+    { name: "MangaNato", url: "https://www.natomanga.com/search/story/{slug}" },
+    { name: "Bato", url: "https://bato.to/search?word={q}" },
+    { name: "MangaPark", url: "https://mangapark.net/search?word={q}" },
+    { name: "Weeb Central", url: "https://weebcentral.com/search?text={q}" },
+  ];
+
+  function build(server, ids) {
+    if (!server) return "";
+    const text = String(ids.title || "").trim();
+    const slug = text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const values = {
+      id: ids.id ? encodeURIComponent(String(ids.id)) : "",
+      q: text ? encodeURIComponent(text) : "",
+      slug: slug ? encodeURIComponent(slug) : "",
+    };
+    if ((server.url.includes("{id}") && !values.id) ||
+        (server.url.includes("{q}") && !values.q) ||
+        (server.url.includes("{slug}") && !values.slug)) return "";
+    return server.url.replace(/\{(id|q|slug)\}/g, (_match, key) => values[key] ?? "");
+  }
+
+  return { servers, build };
+})();
