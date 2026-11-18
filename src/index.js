@@ -8,6 +8,7 @@ import { server as wisp, logging } from "@mercuryworkshop/wisp-js/server";
 import { scramjetPath } from "@mercuryworkshop/scramjet/path";
 import { libcurlPath } from "@mercuryworkshop/libcurl-transport";
 import { baremuxPath } from "@mercuryworkshop/bare-mux/node";
+import { upstream, curlCffiAvailable } from "./upstream.js";
 
 const hlsPath = dirname(createRequire(import.meta.url).resolve("hls.js"));
 const publicPath = resolve(fileURLToPath(new URL("../public/", import.meta.url)));
@@ -58,8 +59,8 @@ async function anilist(req, res) {
     const hit = cache.get(key);
     if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
     JSON.parse(key);
-    const r = await fetch(ANILIST, { method: "POST", headers: { ...json, Accept: "application/json" }, body });
-    const data = await r.text();
+    const r = await upstream(ANILIST, { method: "POST", headers: { ...json, Accept: "application/json" }, body });
+    const data = r.body.toString("utf8");
     if (r.ok) { if (cache.size > 300) cache.clear(); cache.set(key, { data, exp: Date.now() + 5 * 60e3 }); }
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"errors":[{"message":"upstream error"}]}'); }
@@ -70,8 +71,8 @@ async function relay(res, url, ttl = 300e3, extra = {}) {
   try {
     const hit = cache.get(url);
     if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
-    const r = await fetch(url, { headers: { "User-Agent": "Cloudora/0.3 (self-hosted proxy browser)", Accept: "application/json", ...extra } });
-    const data = await r.text();
+    const r = await upstream(url, { headers: { Accept: "application/json", ...extra } });
+    const data = r.body.toString("utf8");
     if (r.ok && ttl) { if (cache.size > 300) cache.clear(); cache.set(url, { data, exp: Date.now() + ttl }); }
     res.writeHead(r.status, json); res.end(data);
   } catch { res.writeHead(502, json); res.end('{"result":"error","errors":[{"title":"upstream error"}]}'); }
@@ -90,11 +91,11 @@ async function image(res, u) {
   try {
     const t = new URL(u);
     if (t.protocol !== "https:" || !okHost(t.hostname)) throw 0;
-    const r = await fetch(t);
+    const r = await upstream(t.href, { headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" } });
     const type = r.headers.get("content-type") || "";
     if (!r.ok || !type.startsWith("image/") || !okHost(new URL(r.url).hostname)) throw 0;
     res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
-    res.end(Buffer.from(await r.arrayBuffer()));
+    res.end(r.body);
   } catch { res.writeHead(404); res.end(); }
 }
 
@@ -106,8 +107,8 @@ async function suggest(res, q) {
   try {
     const key = "sg:" + q.toLowerCase(), hit = cache.get(key);
     if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
-    const r = await fetch("https://duckduckgo.com/ac/?type=list&q=" + encodeURIComponent(q), { headers: { "User-Agent": "Cloudora/0.5" }, signal: AbortSignal.timeout(2500) });
-    const j = await r.json();
+    const r = await upstream("https://duckduckgo.com/ac/?type=list&q=" + encodeURIComponent(q), { timeout: 2500 });
+    const j = JSON.parse(r.body.toString("utf8"));
     const data = JSON.stringify((Array.isArray(j[1]) ? j[1] : []).filter((x) => typeof x === "string").slice(0, 6));
     if (cache.size > 300) cache.clear();
     cache.set(key, { data, exp: Date.now() + 10 * 60e3 });
@@ -124,7 +125,7 @@ function sendFile(req, res, file) {
   else if (ext === ".html" || file.endsWith("sw.js")) headers["Cache-Control"] = "no-cache";
   const gz = COMPRESSIBLE.has(ext) && st.size > 1024 && /\bgzip\b/.test(req.headers["accept-encoding"] || "");
   if (req.headers["if-modified-since"] && new Date(req.headers["if-modified-since"]) >= new Date(Math.floor(st.mtimeMs / 1000) * 1000) && headers["Cache-Control"]?.startsWith("public")) { res.writeHead(304, headers); return res.end(); }
-  if (gz) headers["Content-Encoding"] = "gzip"; headers["Vary"] = "Accept-Encoding";
+  if (gz) headers["Content-Encoding"] = "gzip"; headers["Vary"] = "Accept-Encoding, User-Agent";
   if (req.method === "HEAD") { res.writeHead(200, headers); return res.end(); }
   if (gz && st.size > 200e3) { // big and static: compress once, keep in memory
     let hit = gzCache.get(file);
@@ -136,10 +137,18 @@ function sendFile(req, res, file) {
   gz ? createReadStream(file).pipe(createGzip()).pipe(res) : createReadStream(file).pipe(res);
 }
 
+// Cross-origin isolation (COOP+COEP) gives proxied pages SharedArrayBuffer for sync XHR, but it also makes the
+// browser refuse every third-party iframe that doesn't send CORP/COEP, which is every video embed. Chromium has
+// the `credentialless` iframe attribute (the player sets it) that is exempt from that rule, so isolation stays on
+// there. Firefox/Safari have no such attribute, so they are served without isolation and the embeds load.
+const canIsolate = (ua = "") => /Chrome\/|Chromium\//.test(ua); // Chrome, Edge, Opera, Brave... (Chrome on iOS says CriOS and is WebKit)
+
 const server = createServer((req, res) => {
-  // Required so the proxy can use SharedArrayBuffer
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  if (canIsolate(req.headers["user-agent"])) {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  }
+  res.setHeader("Vary", "User-Agent");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
   if (u.pathname === "/api/config") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || ""), manga: true, anilist: true })); }

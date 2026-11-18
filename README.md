@@ -102,3 +102,19 @@ redirect stubs). Already built; re-run when you change lists:
 ## Local testing
 `CLOUDORA_ALLOW_LOCAL=1 npm start` lets the tunnel reach 127.0.0.1/LAN so you can test against a local page.
 Never set it on a public server.
+
+
+## Player, loaders and upstream fetching (0.6)
+- **Player:** the iframe is never sandboxed (providers refuse to play in a sandboxed frame). The server menu is a plain
+  styled list, not a dropdown, and remembers the last server you used. Episodes in the detail popup are split into batches of
+  100 with a dropdown to switch batch; reopening a show jumps to the batch you were watching.
+- **Why embeds were blank before:** the page was sent with `Cross-Origin-Embedder-Policy: require-corp`, which makes the browser
+  block every third-party iframe. Chromium keeps that isolation (needed for proxied pages' synchronous XHR) and the player uses a
+  `credentialless` iframe, which is exempt. Firefox and Safari have no such attribute, so the server leaves isolation off for them.
+- **User agent:** all server-side requests (AniList, MangaDex, images, source API, suggestions) send a real Chrome user agent
+  (`UPSTREAM_UA` to override).
+- **curl_cffi fallback (optional):** if an upstream answers like a bot filter (403/429/503 or a Cloudflare challenge), the request is retried
+  through `scripts/curl_fetch.py`, which uses [curl_cffi](https://curl-cffi.readthedocs.io/) to send a real Chrome TLS/HTTP2 fingerprint.
+  Needs `python3` and `pip install -r requirements.txt` on the server; if missing it is skipped. `CURL_CFFI=0` disables it,
+  `CURL_CFFI=1` uses it for every request, `CURL_IMPERSONATE=chrome131` picks another browser, `PYTHON=` sets the binary.
+- **Source API first:** when `STREAM_API` is set, its direct HLS/MP4 sources are tried first and listed above the embed servers.

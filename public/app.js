@@ -27,7 +27,7 @@ const ICONS = {
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   shield: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6z", shieldoff: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6zM4 4l16 16",
   history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2", dots: "M5 12h.01M12 12h.01M19 12h.01", pin: "M12 17v5M9 3h6l-1 6 3 3H7l3-3z",
-  find: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", up: "M18 15l-6-6-6 6", down: "M6 9l6 6 6-6", search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
+  find: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", up: "M18 15l-6-6-6 6", check: "M20 6L9 17l-5-5", ext: "M14 3h7v7M10 14L21 3M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5", down: "M6 9l6 6 6-6", search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
 };
 const ic = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[n]}"/></svg>`;
 document.querySelectorAll("[data-ic]").forEach((b) => b.insertAdjacentHTML("afterbegin", ic(b.dataset.ic)));
@@ -224,7 +224,7 @@ function onKey(e) {
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -331,6 +331,11 @@ async function gql(query, variables) {
   return j.data;
 }
 const img = (u) => `/img?u=${encodeURIComponent(u)}`;
+// Loading states: a spinner (optionally with text) and shimmering placeholder cards
+const spinner = (text = "", cls = "") => `<div class="loading ${cls}" role="status" aria-live="polite"><span class="spin"></span>${text ? `<span>${esc(text)}</span>` : ""}</div>`;
+const skeleton = (n = 12) => `<div class="grid">${'<div class="skcard"><i class="sk-img"></i><i class="sk-l"></i><i class="sk-l s"></i></div>'.repeat(n)}</div>`;
+// Cover/page images get a shimmer until they arrive (load/error don't bubble, so listen in the capture phase)
+for (const type of ["load", "error"]) document.addEventListener(type, (e) => { if (e.target.tagName === "IMG") e.target.classList.add("ok"); }, true);
 const mname = (m) => m.title.english || m.title.romaji;
 const mmeta = (m) => [m.averageScore && "★ " + m.averageScore, m.format && m.format.replace("_", " "), m.episodes ? m.episodes + " eps" : m.chapters ? m.chapters + " ch" : ""].filter(Boolean).join(" · ");
 const card = (m) => `<div class="mcard glow" data-id="${m.id}"><img loading="lazy" alt="" src="${img(m.coverImage.large)}"><b>${esc(mname(m))}</b><small>${esc(mmeta(m))}</small></div>`;
@@ -355,7 +360,7 @@ async function showDiscover(page, q = "") {
   if (key === discKey) return;
   discKey = key;
   $("#d-title").textContent = PAGE_TITLES[page]; $("#d-q").placeholder = "Search " + PAGE_TITLES[page].toLowerCase() + "…";
-  $("#d-body").innerHTML = '<p class="muted">Loading…</p>';
+  $("#d-body").innerHTML = spinner("Loading " + PAGE_TITLES[page].toLowerCase() + "…") + skeleton();
   try { await loaders[page](q, key); }
   catch (err) { if (key === discKey) { discKey = ""; $("#d-body").innerHTML = `<p class="muted">Couldn't load this page (${esc(err.message)}).</p>`; } }
 }
@@ -388,9 +393,9 @@ async function mangaDetail(id) {
   d.hidden = false;
   d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div class="dbody"><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
     <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p>
-    <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || '<span class="muted">Loading…</span>'}</div>
+    <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || spinner("", "sm")}</div>
     <h4>Unofficial sources ${badge(false)}</h4><div class="chips" id="m-unofficial"></div>
-    <h4>Read here ${badge(false)}</h4><small class="muted">Community translations hosted on MangaDex.</small><div class="chlist" id="chs"><p class="muted">Loading…</p></div>
+    <h4>Read here ${badge(false)}</h4><small class="muted">Community translations hosted on MangaDex.</small><div class="chlist" id="chs">${spinner("Loading chapters…", "sm")}</div>
     <h4>Info</h4><div class="chips">${chip("https://mangadex.org/title/" + m.id, "MangaDex")}${L.al ? chip("https://anilist.co/manga/" + L.al, "AniList") : ""}</div></div></div>`;
   const providers = window.CloudoraMangaProviders;
   if (providers) $("#m-unofficial").innerHTML = providers.servers.map((server) => {
@@ -415,7 +420,7 @@ async function openChapter(i) {
   pushRecent("manga", { id: m.id, m, label: chLabel(c) });
   $("#d-detail").hidden = true; rd.hidden = false; rd.scrollTop = 0;
   rd.innerHTML = `<div class="rhead"><button class="ghost" id="r-close">${ic("close")}</button><b>${esc(mTitle(m))} · ${esc(chLabel(c))}</b>
-    <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages"><p class="muted">Loading pages…</p></div>`;
+    <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages">${spinner("Loading pages…")}</div>`;
   try {
     const s = await md(`/at-home/server/${c.id}`);
     $("#reader .rpages").innerHTML = s.chapter.data.map((f) => `<img referrerpolicy="no-referrer" loading="lazy" alt="Loading…" src="${esc(`/api/md-image?u=${encodeURIComponent(`${s.baseUrl}/data/${s.chapter.hash}/${f}`)}`)}">`).join("") +
@@ -423,112 +428,199 @@ async function openChapter(i) {
   } catch (err) { $("#reader .rpages").innerHTML = `<p class="muted">Couldn't load this chapter (${esc(err.message)}).</p>`; }
 }
 
-// Anime detail (AniList) + built-in player (needs a source API on the server)
+// Anime detail (AniList) + built-in player
 let streamOn = false, streamOfficial = false, watching = null;
 fetch("/api/config").then((r) => r.json()).then((c) => { streamOn = !!c.stream; streamOfficial = !!c.official; }).catch(() => {});
+
+// ---- small styled dropdown (replaces native <select>): one floating menu at a time, keyboard friendly ----
+let dd = null;
+function closeDD() {
+  if (!dd) return false;
+  dd.menu.remove(); dd.btn.setAttribute("aria-expanded", "false"); dd.btn.classList.remove("open");
+  dd = null; return true;
+}
+// items: [[value, label, hint?]]; pick(value) runs when one is chosen
+function openDD(btn, items, current, pick) {
+  if (dd && dd.btn === btn) return closeDD();
+  closeDD();
+  const m = document.createElement("div"); m.className = "ddmenu"; m.setAttribute("role", "listbox");
+  m.innerHTML = items.map(([v, label, hint]) => `<button type="button" role="option" class="ddi${v === current ? " on" : ""}" data-v="${esc(String(v))}" aria-selected="${v === current}"><span>${esc(label)}</span>${hint ? `<small>${esc(hint)}</small>` : ""}${v === current ? ic("check") : ""}</button>`).join("");
+  document.body.appendChild(m);
+  const r = btn.getBoundingClientRect(), room = innerHeight - r.bottom - 14, up = room < 200 && r.top > room;
+  m.style.minWidth = Math.max(r.width, 190) + "px";
+  m.style.maxHeight = Math.max(140, Math.min(340, up ? r.top - 14 : room)) + "px";
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
+  m.style[up ? "bottom" : "top"] = (up ? innerHeight - r.top + 6 : r.bottom + 6) + "px";
+  btn.setAttribute("aria-expanded", "true"); btn.classList.add("open");
+  dd = { btn, menu: m };
+  m.addEventListener("click", (e) => { const i = e.target.closest(".ddi"); if (!i) return; const v = items.find(([x]) => String(x) === i.dataset.v)[0]; closeDD(); btn.focus(); pick(v); });
+  m.addEventListener("keydown", (e) => {
+    const all = [...m.querySelectorAll(".ddi")], at = all.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); all[(at + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length].focus(); }
+    else if (e.key === "Home") { e.preventDefault(); all[0].focus(); } else if (e.key === "End") { e.preventDefault(); all[all.length - 1].focus(); }
+    else if (e.key === "Escape") { e.stopPropagation(); closeDD(); btn.focus(); }
+  });
+  (m.querySelector(".ddi.on") || m.querySelector(".ddi"))?.focus();
+  m.querySelector(".ddi.on")?.scrollIntoView({ block: "center" });
+}
+document.addEventListener("pointerdown", (e) => { if (dd && !dd.menu.contains(e.target) && !dd.btn.contains(e.target)) closeDD(); }, true);
+document.addEventListener("scroll", (e) => { if (dd && !dd.menu.contains(e.target)) closeDD(); }, true);
+addEventListener("resize", closeDD);
+
+// ---- episodes: shown in batches of 100 with a dropdown to pick the batch ----
+const BATCH = 100;
+const epRange = (b, count) => [b * BATCH + 1, Math.min(count, (b + 1) * BATCH)];
+function renderEps() {
+  const w = watching, box = $("#eps"); if (!w || !box) return;
+  const [a, z] = epRange(w.batch, w.count);
+  box.innerHTML = Array.from({ length: z - a + 1 }, (_, i) => `<button class="chip${a + i === w.last ? " cur" : ""}" data-ep="${a + i}">${a + i}</button>`).join("");
+  const l = $("#ep-batch-l"); if (l) l.textContent = `Episodes ${a} – ${z}`;
+}
+function pickBatch(btn) {
+  const w = watching, n = Math.ceil(w.count / BATCH);
+  openDD(btn, Array.from({ length: n }, (_, b) => { const [a, z] = epRange(b, w.count); return [b, `${a} – ${z}`, w.last >= a && w.last <= z ? "watching" : ""]; }), w.batch, (b) => { w.batch = b; renderEps(); $("#eps").scrollTop = 0; });
+}
+
 async function animeDetail(id) {
   const d = $("#d-detail");
-  d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Loading…</p></div>`;
+  d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}${spinner("Loading details…")}</div>`;
   try {
     const m = (await gql(ONE, { id })).Media;
     const desc = (m.description || "No description.").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
     const seen = new Set();
     const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
-    const count = Math.min(300, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
-    watching = { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large };
-    const play = count ? `<h4>Play here ${badge(streamOfficial)}</h4><div class="chlist eps">${Array.from({ length: count }, (_, i) => `<button class="chip" data-ep="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
+    const count = Math.min(5000, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
+    const last = Math.min(count, (db.get("recent:anime", []).find((x) => x.id === id) || {}).ep || 0); // reopen on the batch you were watching
+    watching = { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large, last, batch: last ? Math.floor((last - 1) / BATCH) : 0 };
+    const play = count ? `<h4>Play here ${badge(streamOfficial)}</h4>
+      <div class="eprow">${count > BATCH ? `<button type="button" class="dd-btn" id="ep-batch" aria-haspopup="listbox" aria-expanded="false"><span id="ep-batch-l"></span>${ic("down")}</button>` : ""}<small class="muted">${count} episode${count > 1 ? "s" : ""}</small></div>
+      <div class="chlist eps" id="eps"></div>` : "";
     d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div class="dbody">
       <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
       <div class="chips" style="margin-top:8px">${(m.genres || []).map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
       <p class="desc">${esc(desc)}</p>${play}<h4>Official sources ${badge(true)}</h4>
       <div class="chips">${links.map((l) => `<button class="chip" data-open="${esc(l.url)}">${esc(l.site)}</button>`).join("")}</div></div></div>`;
+    renderEps();
   } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; }
 }
 
-// Player: plays HLS / MP4 URLs returned by the configured source API (+ subtitles, speed, resume, auto-next)
+// ---- player ----
+// Direct HLS/MP4 sources (from the optional STREAM_API) play in a <video>; embed providers play in an iframe.
+// The iframe must NEVER get a sandbox attribute: providers detect it and refuse to play. When the page is
+// cross-origin isolated (Chromium) the iframe needs `credentialless`, otherwise the browser blocks the embed.
 const ensureHls = () => new Promise((res) => { if (window.Hls) return res(); const s = document.createElement("script"); s.src = "/hls/hls.min.js"; s.onload = s.onerror = res; document.head.appendChild(s); });
 const pmsg = (t) => { const m = $("#p-msg"); if (m) m.textContent = t; };
-function closePlayer() { const pl = $("#player"); const v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); } pl.hidden = true; pl.innerHTML = ""; }
+const pload = (text) => { const l = $("#p-load"); if (!l) return; l.hidden = !text; if (text) l.innerHTML = spinner(text); };
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+let player = { items: [], cur: -1 }, embedTimer = 0;
+function closePlayer() {
+  clearTimeout(embedTimer); closeDD();
+  const pl = $("#player"), v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); }
+  pl.hidden = true; pl.innerHTML = "";
+}
 async function attach(v, src) {
   const pb = $("#p-badge"); if (pb) pb.innerHTML = badge(src.official ?? streamOfficial);
   if (v._hls) { v._hls.destroy(); v._hls = null; }
+  const fail = () => { pload(""); pmsg("Couldn't play this source (the host may block cross-site playback). Try another server."); };
   if (src.type === "hls" || /\.m3u8(\?|$)/i.test(src.url)) {
     await ensureHls();
     if (window.Hls && Hls.isSupported()) {
       const h = (v._hls = new Hls());
-      h.on(Hls.Events.ERROR, (_, e) => e.fatal && pmsg("Couldn't play this source (the host may block cross-site playback). Try another source."));
+      h.on(Hls.Events.ERROR, (_, e) => e.fatal && fail());
       h.loadSource(src.url); h.attachMedia(v);
     } else if (v.canPlayType("application/vnd.apple.mpegurl")) v.src = src.url; // Safari / iOS native HLS
-    else pmsg("This browser can't play HLS streams.");
+    else { pload(""); pmsg("This browser can't play HLS streams."); }
   } else v.src = src.url;
+}
+function mountEmbed(url) {
+  clearTimeout(embedTimer);
+  const stage = $("#pstage"); $("#p-embed")?.remove();
+  const f = document.createElement("iframe");
+  f.id = "p-embed"; f.title = `${watching.title} · Episode ${watching.last}`;
+  f.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write";
+  f.allowFullscreen = true;
+  if (window.crossOriginIsolated) f.setAttribute("credentialless", "");
+  f.addEventListener("load", () => { clearTimeout(embedTimer); pload(""); pmsg(""); });
+  stage.appendChild(f); // a fresh iframe per server so switching doesn't pile up history entries
+  f.src = url;
+  pload("Loading player…"); pmsg("");
+  embedTimer = setTimeout(() => { pload(""); pmsg("Taking a while. If the player stays blank, pick another server below."); }, 12000);
+}
+function renderServers() {
+  const box = $("#p-servers"); if (!box) return;
+  const groups = new Set(player.items.map((x) => x.group)); let last = "", html = "";
+  player.items.forEach((it, i) => {
+    if (groups.size > 1 && it.group !== last) html += `<div class="sgrp">${esc(it.group)}</div>`;
+    last = it.group;
+    html += `<button type="button" role="menuitemradio" aria-checked="${i === player.cur}" class="srv${i === player.cur ? " on" : ""}" data-srv="${i}"><span class="dot"></span><span class="st">${esc(it.title)}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</button>`;
+  });
+  box.innerHTML = html;
+}
+async function useServer(i) {
+  const it = player.items[i], v = $("#vid"); if (!it || !v) return;
+  player.cur = i; renderServers(); pmsg("");
+  $("#p-speed").hidden = it.kind !== "native";
+  const tab = $("#p-tab"); tab.hidden = it.kind !== "embed"; tab.dataset.open = it.kind === "embed" ? it.url : "";
+  if (it.kind === "embed") {
+    v.pause(); v.hidden = true; if (v._hls) { v._hls.destroy(); v._hls = null; }
+    $("#p-badge").innerHTML = badge(it.official ?? false);
+    if (it.name) db.set("server", it.name);
+    mountEmbed(it.url);
+  } else {
+    clearTimeout(embedTimer); $("#p-embed")?.remove(); v.hidden = false;
+    pload("Loading stream…");
+    await attach(v, it.src);
+  }
 }
 async function playEpisode(num) {
   const w = watching, pl = $("#player"), key = `progress:${w.id}:${num}`;
-  pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num });
+  w.last = num; w.batch = Math.floor((num - 1) / BATCH); renderEps();
+  pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num, ep: num });
+  closeDD(); clearTimeout(embedTimer);
   $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0;
-  pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
-    <select id="p-speed">${[0.75, 1, 1.25, 1.5, 2].map((s) => `<option value="${s}"${s === 1 ? " selected" : ""}>${s}×</option>`).join("")}</select>
+  pl.innerHTML = `<div class="rhead"><button class="ghost" id="p-close" title="Back to episodes">${ic("close")}</button><b>${esc(w.title)} · Episode ${num}</b>
     <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
-    <div class="pbody"><video id="vid" controls playsinline autoplay crossorigin="anonymous"></video><iframe id="p-embed" hidden allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe><div class="prow"><select id="p-src" hidden></select><span id="p-badge"></span><span class="muted" id="p-msg">Loading source…</span></div></div>`;
-  const v = $("#vid");
-  const providerApi = window.CloudoraVideoProviders;
-  const embedServers = providerApi.available({ anilist: w.id, mal: w.malId, ep: num, lang: "sub" });
-  if (embedServers.length) {
-    const sel = $("#p-src");
-    sel.hidden = false;
-    sel._srcs = [];
-    sel._embeds = embedServers;
-    sel.dataset.ep = String(num);
-    sel.innerHTML = embedServers.map((server) => `<option value="${esc(server.name)}">${esc(server.name)}</option>`).join("");
-    v.hidden = true;
-    const frame = $("#p-embed");
-    frame.hidden = false;
-    frame.src = providerApi.build(embedServers[0], { anilist: w.id, mal: w.malId, ep: num, lang: "sub" });
-    pmsg("");
-    return;
+    <div class="pbody">
+      <div class="pstage" id="pstage"><video id="vid" controls playsinline autoplay crossorigin="anonymous" hidden></video><div class="pload" id="p-load">${spinner("Finding sources…")}</div></div>
+      <div class="pbar"><span id="p-badge"></span><span class="muted" id="p-msg"></span><span class="grow"></span>
+        <div class="seg sm" id="p-speed" hidden>${SPEEDS.map((s) => `<button type="button" data-spd="${s}"${s === 1 ? ' class="on"' : ""}>${s}×</button>`).join("")}</div>
+        <button type="button" class="btn" id="p-tab" hidden>${ic("ext")}Open in tab</button></div>
+      <div class="srvbox"><h4>Servers</h4><div class="srvlist" id="p-servers" role="menu"></div></div>
+    </div>`;
+  const v = $("#vid"), ids = { anilist: w.id, mal: w.malId, ep: num, lang: "sub" }, api = window.CloudoraVideoProviders;
+  const items = [];
+  if (streamOn) {
+    try {
+      const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));
+      if (!$("#vid") || watching !== w || w.last !== num) return; // closed or changed episode while we waited
+      if (!r.ok) throw new Error(j.error || "source API error " + r.status);
+      const all = (j.sources || []).filter((s) => s.url && /^https?:\/\//.test(s.url));
+      all.forEach((s, n) => {
+        const title = s.label || s.quality || "Source " + (n + 1);
+        if (s.type === "embed") items.push({ kind: "embed", group: "Source API", title, sub: "embed", url: s.url, official: s.official ?? streamOfficial });
+        else items.push({ kind: "native", group: "Source API", title, sub: (s.type || "").toUpperCase(), src: s });
+      });
+      (j.subtitles || []).forEach((t, i) => {
+        if (!/^https?:\/\//.test(t.url)) return;
+        const k = document.createElement("track"); k.kind = "subtitles"; k.src = t.url; k.label = t.label || t.lang || "Subtitles"; k.srclang = t.lang || "en"; k.default = i === 0; v.appendChild(k);
+      });
+    } catch (err) { if (!api || !api.available(ids).length) { pload(""); return pmsg("Couldn't start playback: " + err.message); } }
   }
-  try {
-    const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || "source API error " + r.status);
-    const all = (j.sources || []).filter((s) => s.url && /^https?:\/\//.test(s.url));
-    const playable = all.filter((s) => s.type !== "embed"), emb = all.find((s) => s.type === "embed");
-    if (!playable.length) {
-      if (!emb) throw new Error("no sources for this episode");
-      return ($("#p-msg").innerHTML = `<button class="chip" data-open="${esc(emb.url)}">Open player in a tab</button>`);
-    }
-    (j.subtitles || []).forEach((t, i) => {
-      if (!/^https?:\/\//.test(t.url)) return;
-      const k = document.createElement("track"); k.kind = "subtitles"; k.src = t.url; k.label = t.label || t.lang || "Subtitles"; k.srclang = t.lang || "en"; k.default = i === 0; v.appendChild(k);
-    });
-    const sel = $("#p-src"); sel._srcs = playable;
-    if (playable.length > 1) { sel.hidden = false; sel.innerHTML = playable.map((s, i) => `<option value="${i}">${esc(s.label || s.quality || "Source " + (i + 1))}</option>`).join(""); }
-    let last = 0;
-    v.onloadedmetadata = () => { const t = db.get(key, 0); if (t > 10 && t < v.duration - 30) v.currentTime = t; v.playbackRate = +$("#p-speed").value; pmsg(""); };
-    v.ontimeupdate = () => { if (Date.now() - last > 5000) { last = Date.now(); db.set(key, v.currentTime); } };
-    v.onended = () => { db.set(key, 0); if (num < w.count) playEpisode(num + 1); };
-    v.onerror = () => pmsg("Couldn't play this source (the host may block cross-site playback). Try another source.");
-    await attach(v, playable[0]);
-  } catch (err) { pmsg("Couldn't start playback: " + err.message); }
+  const saved = db.get("server", "");
+  const embeds = api ? api.available(ids) : [];
+  embeds.sort((a, b) => (b.name === saved) - (a.name === saved)); // last server you used goes first
+  for (const s of embeds) { const d = api.describe(s); items.push({ kind: "embed", group: "Embed servers", name: s.name, title: d.title, sub: d.sub, url: api.build(s, ids) }); }
+  if (!items.length) { pload(""); return pmsg("No sources found for this episode."); }
+  player = { items, cur: -1 };
+  let last = 0;
+  v.onloadedmetadata = () => { const t = db.get(key, 0); if (t > 10 && t < v.duration - 30) v.currentTime = t; v.playbackRate = +($("#p-speed .on")?.dataset.spd || 1); pload(""); pmsg(""); };
+  v.onplaying = () => pload("");
+  v.ontimeupdate = () => { if (Date.now() - last > 5000) { last = Date.now(); db.set(key, v.currentTime); } };
+  v.onended = () => { db.set(key, 0); if (num < w.count) playEpisode(num + 1); };
+  v.onerror = () => { pload(""); pmsg("Couldn't play this source (the host may block cross-site playback). Try another server."); };
+  useServer(0);
 }
-el.disc.addEventListener("change", (e) => {
-  if (e.target.id === "p-src") {
-    const sel = e.target;
-    if (sel._embeds) {
-      const server = sel._embeds.find((x) => x.name === sel.value);
-      const frame = $("#p-embed"), v = $("#vid");
-      if (server && frame && watching) {
-        v.hidden = true; frame.hidden = false;
-        frame.src = window.CloudoraVideoProviders.build(server, {
-          anilist: watching.id, mal: watching.malId, ep: sel.dataset.ep || 1, lang: "sub",
-        });
-      }
-    } else if (sel._srcs) {
-      attach($("#vid"), sel._srcs[+sel.value]);
-    }
-  }
-  else if (e.target.id === "p-speed") $("#vid").playbackRate = +e.target.value;
-});
 
 el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
@@ -536,6 +628,9 @@ el.disc.addEventListener("click", (e) => {
   const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
   const open = t.closest("[data-open]"); if (open) { d.hidden = true; return newTab(open.dataset.open); }
   if (t.closest("#p-close")) { closePlayer(); if (watching) d.hidden = false; return; }
+  const eb = t.closest("#ep-batch"); if (eb) return pickBatch(eb);
+  const sv = t.closest("[data-srv]"); if (sv) return useServer(+sv.dataset.srv);
+  const sp = t.closest("[data-spd]"); if (sp) { $("#vid").playbackRate = +sp.dataset.spd; sp.parentNode.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === sp)); return; }
   const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || playEpisode(+pn.dataset.pn);
   const ep = t.closest("[data-ep]"); if (ep) return playEpisode(+ep.dataset.ep);
   if (t.closest("#r-close")) { $("#reader").hidden = true; return; }

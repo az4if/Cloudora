@@ -46,7 +46,15 @@ window.CloudoraVideoProviders = (() => {
     return servers.filter((server) => build(server, ids));
   }
 
-  return { servers, build, available };
+  // Human label for the server menu: host name + which id it uses + any variant
+  function describe(server) {
+    const host = new URL(server.url.replace(/\{\w+\}/g, "x")).hostname.replace(/^(www|cdn|player)\./, "");
+    const word = host.split(".")[0].length > 3 ? host.split(".")[0] : host;
+    const sub = [server.url.includes("{ani}") ? "AniList" : "MAL", /hardsub/.test(server.url) && "hardsub", /fallback/.test(server.url) && "fallback", /animepahe/.test(server.url) && "AnimePahe"].filter(Boolean);
+    return { title: word[0].toUpperCase() + word.slice(1), sub: sub.join(" · ") };
+  }
+
+  return { servers, build, available, describe };
 })();
 
 window.CloudoraMangaProviders = (() => {

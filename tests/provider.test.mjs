@@ -4,6 +4,7 @@ import {
   availableVideoServers,
   buildMangaServerUrl,
   buildVideoServerUrl,
+  describeVideoServer,
   MANGA_SERVERS,
   VIDEO_SERVERS,
 } from "../provider.js";
@@ -61,4 +62,13 @@ test("builds MangaDex and search provider URLs", () => {
     }),
     "https://comick.io/search?q=Test%20Manga",
   );
+});
+
+test("every embed server gets a readable menu label", () => {
+  for (const server of VIDEO_SERVERS) {
+    const d = describeVideoServer(server);
+    assert.match(d.title, /^[A-Z0-9]/);
+    assert.match(d.sub, /^(AniList|MAL)/);
+  }
+  assert.deepEqual(describeVideoServer(VIDEO_SERVERS.find((s) => s.name === "pmha")), { title: "Ani.pm", sub: "AniList · hardsub" });
 });

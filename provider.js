@@ -71,3 +71,10 @@ export function availableVideoServers({ ani, mal } = {}) {
     return aniId || malId;
   });
 }
+
+export function describeVideoServer(server) {
+  const host = new URL(server.url.replace(/\{\w+\}/g, "x")).hostname.replace(/^(www|cdn|player)\./, "");
+  const word = host.split(".")[0].length > 3 ? host.split(".")[0] : host;
+  const sub = [server.url.includes("{ani}") ? "AniList" : "MAL", /hardsub/.test(server.url) && "hardsub", /fallback/.test(server.url) && "fallback", /animepahe/.test(server.url) && "AnimePahe"].filter(Boolean);
+  return { title: word[0].toUpperCase() + word.slice(1), sub: sub.join(" · ") };
+}
