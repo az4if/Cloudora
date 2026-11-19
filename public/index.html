@@ -69,32 +69,92 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
   <div id="ctx" role="menu" hidden></div>
   <div id="toast" hidden></div>
   <div id="settings" hidden>
-    <div class="card">
-      <div class="row"><b>Settings</b><button class="ghost" id="close-settings" data-ic="close"></button></div>
-      <h4>Appearance</h4>
-      <div class="seg" id="modes"></div>
-      <div class="swatches" id="themes"></div>
-      <div class="wheelrow">
-        <div class="wheelwrap"><div id="wheel"><div id="wthumb"></div></div><div id="wprev"></div></div>
-        <div class="wctl">
-          <small>Custom color</small>
-          <input type="range" id="wsat" min="30" max="100" title="Intensity" />
-          <div class="row"><span class="chip" id="whex">#000000</span><input type="color" id="wnative" title="Pick exact color" /></div>
-        </div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="set-title">
+      <nav id="set-nav" role="tablist" aria-orientation="vertical">
+        <h2 id="set-title">Settings</h2>
+        <button type="button" role="tab" data-tab="appearance" data-ic="palette"><span>Appearance</span></button>
+        <button type="button" role="tab" data-tab="search" data-ic="search"><span>Search</span></button>
+        <button type="button" role="tab" data-tab="privacy" data-ic="shield"><span>Privacy</span></button>
+        <button type="button" role="tab" data-tab="browser" data-ic="globe"><span>Browser</span></button>
+        <button type="button" role="tab" data-tab="about" data-ic="info"><span>About</span></button>
+      </nav>
+      <button type="button" class="ghost" id="close-settings" data-ic="close" title="Close (Esc)" aria-label="Close settings"></button>
+      <div class="spanes">
+
+        <section class="pane" role="tabpanel" data-pane="appearance">
+          <h3>Appearance</h3><p class="lede">Make Cloudora look the way you like.</p>
+          <h5>Theme</h5>
+          <div class="modes" id="modes" role="radiogroup" aria-label="Theme"></div>
+          <h5>Accent color</h5>
+          <div class="group">
+            <div class="swatches" id="themes"></div>
+            <div class="wheelrow">
+              <div class="wheelwrap"><div id="wheel"><div id="wthumb"></div></div><div id="wprev"></div></div>
+              <div class="wctl">
+                <b>Custom color</b><small>Drag around the wheel, or pick an exact color</small>
+                <input type="range" id="wsat" min="30" max="100" title="Intensity" aria-label="Color intensity" />
+                <div class="row"><span class="chip" id="whex">#000000</span><input type="color" id="wnative" title="Pick exact color" aria-label="Pick exact color" /></div>
+              </div>
+            </div>
+          </div>
+          <h5>Effects</h5>
+          <div class="group"><div class="srow"><div class="st"><b>Cursor glow</b><small>Search bars and cards light up near your cursor</small></div><button class="switch" data-k="glow" role="switch" aria-label="Cursor glow"></button></div></div>
+        </section>
+
+        <section class="pane" role="tabpanel" data-pane="search" hidden>
+          <h3>Search</h3><p class="lede">What the address bar and the home page search with.</p>
+          <div class="group"><div class="srow"><div class="st"><b>Search engine</b><small>Used when you type something that isn't a web address</small></div><button type="button" class="dd-btn" id="engine-btn" aria-haspopup="listbox" aria-expanded="false"><span id="engine-l"></span></button></div></div>
+        </section>
+
+        <section class="pane" role="tabpanel" data-pane="privacy" hidden>
+          <h3>Privacy</h3><p class="lede">Control what pages can load and how requests are made.</p>
+          <h5>Blocking</h5>
+          <div class="group"><div class="srow"><div class="st"><b>Block ads &amp; trackers</b><small id="filter-info">EasyList, EasyPrivacy and uBlock filters: network blocking, element hiding, scriptlets and a popup guard</small></div><button class="switch" data-k="adblock" role="switch" aria-label="Block ads and trackers"></button></div></div>
+          <div id="allowbox" hidden>
+            <h5>Paused sites</h5>
+            <div class="group pad"><small class="muted">Blocking is off on these sites. Click one to turn it back on.</small><div class="chips" id="allowlist"></div></div>
+          </div>
+          <div id="imp-row" hidden>
+            <h5>Network</h5>
+            <div class="group"><div class="srow"><div class="st"><b>Real-browser fetching</b><small>The server fetches pages with a real Chrome/Firefox/Safari TLS fingerprint (matched to your browser) so fewer sites treat the proxy as a bot</small></div><button class="switch" data-k="impersonate" role="switch" aria-label="Real-browser fetching"></button></div></div>
+          </div>
+        </section>
+
+        <section class="pane" role="tabpanel" data-pane="browser" hidden>
+          <h3>Browser</h3><p class="lede">Tabs, history and saved data.</p>
+          <h5>Behavior</h5>
+          <div class="group">
+            <div class="srow"><div class="st"><b>Restore tabs on start</b><small>Reopen the tabs you had last time</small></div><button class="switch" data-k="restore" role="switch" aria-label="Restore tabs on start"></button></div>
+            <div class="srow"><div class="st"><b>Save history</b><small>Powers History and address-bar suggestions</small></div><button class="switch" data-k="history" role="switch" aria-label="Save history"></button></div>
+          </div>
+          <h5>Your data</h5>
+          <div class="group">
+            <div class="srow"><div class="st"><b>Browsing history</b><small id="hist-n"></small></div><button type="button" class="btn danger" id="clear-hist">Clear</button></div>
+            <div class="srow"><div class="st"><b>Bookmarks</b><small id="bm-n"></small></div><button type="button" class="btn danger" id="clear-bm">Clear</button></div>
+          </div>
+        </section>
+
+        <section class="pane" role="tabpanel" data-pane="about" hidden>
+          <div class="about"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" /><div><h3>Cloudora</h3><small class="muted" id="ver">Version 0.6.2</small></div></div>
+          <p class="lede">Browse beyond the walls. Pages are fetched by your server and rendered with Scramjet.</p>
+          <h5>Keyboard shortcuts</h5>
+          <div class="group pad"><dl class="keys">
+            <dt><kbd>Alt</kbd><kbd>T</kbd></dt><dd>New tab</dd>
+            <dt><kbd>Alt</kbd><kbd>W</kbd></dt><dd>Close tab</dd>
+            <dt><kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd></dt><dd>Reopen closed tab</dd>
+            <dt><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Switch to tab</dd>
+            <dt><kbd>Alt</kbd><kbd>L</kbd></dt><dd>Focus address bar</dd>
+            <dt><kbd>Alt</kbd><kbd>F</kbd></dt><dd>Find in page</dd>
+            <dt><kbd>Alt</kbd><kbd>D</kbd></dt><dd>Bookmark page</dd>
+            <dt><kbd>Alt</kbd><kbd>H</kbd></dt><dd>History</dd>
+            <dt><kbd>Alt</kbd><kbd>R</kbd></dt><dd>Reload</dd>
+            <dt><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd></dt><dd>Back / forward</dd>
+            <dt><kbd>Alt</kbd><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>Zoom in / out / reset</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Close the top layer</dd>
+          </dl></div>
+          <p class="credit">Built on Scramjet, bare-mux, libcurl.js, wisp-js and hls.js. Anime data from AniList, manga from MangaDex.</p>
+        </section>
       </div>
-      <div class="set"><div><b>Cursor glow</b><small>Search bars and cards light up near your cursor</small></div><button class="switch" data-k="glow" role="switch"></button></div>
-      <h4>Search</h4>
-      <div class="set"><b>Search engine</b><select id="engine"></select></div>
-      <h4>Privacy</h4>
-      <div class="set"><div><b>Block ads &amp; trackers</b><small id="filter-info">EasyList, EasyPrivacy and uBlock filters: network blocking, element hiding, scriptlets and a popup guard</small></div><button class="switch" data-k="adblock" role="switch"></button></div>
-      <div id="allowbox" hidden><small>Paused on these sites</small><div class="chips" id="allowlist"></div></div>
-      <div class="set" id="imp-row" hidden><div><b>Real-browser fetching</b><small>The server fetches pages with a real Chrome/Firefox/Safari TLS fingerprint (matched to your browser) so fewer sites treat the proxy as a bot</small></div><button class="switch" data-k="impersonate" role="switch"></button></div>
-      <h4>Browser</h4>
-      <div class="set"><div><b>Restore tabs on start</b><small>Reopen the tabs you had last time</small></div><button class="switch" data-k="restore" role="switch"></button></div>
-      <div class="set"><div><b>Save history</b><small>Powers History and address-bar suggestions</small></div><button class="switch" data-k="history" role="switch"></button></div>
-      <div class="set"><b>History</b><button class="btn" id="clear-hist">Clear</button></div>
-      <div class="set"><b>Bookmarks</b><button class="btn" id="clear-bm">Clear</button></div>
-      <small class="foot">Cloudora 0.6.2</small>
     </div>
   </div>
 </div>

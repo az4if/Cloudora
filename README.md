@@ -146,3 +146,10 @@ The Anime and Manga pages are driven by the address bar hash, so reload, back/fo
 Opening a card or searching adds a history entry; switching episode/chapter replaces the current one, so the Back button (and Esc)
 always steps out one layer: watch/read -> list, info popup -> list. While watching or reading, the cards behind are hidden and the
 list's scroll position is restored on the way back. "Continue watching / reading" cards show an x on hover to remove them.
+
+## Settings
+Settings opens as a sidebar sheet with five sections: **Appearance** (Auto/Light/Dark preview tiles, accent swatches, custom color wheel,
+cursor glow), **Search** (engine menu), **Privacy** (ads & tracker blocking, paused sites, real-browser fetching when the server supports it),
+**Browser** (restore tabs, save history, clear history/bookmarks with a confirm click) and **About** (version from the server, keyboard
+shortcuts). The last section you used is remembered; arrow keys move between sections and Esc closes. On phones the sidebar becomes a
+tab bar across the top.

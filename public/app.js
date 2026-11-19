@@ -27,7 +27,7 @@ const ICONS = {
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   shield: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6z", shieldoff: "M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6zM4 4l16 16",
   history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2", dots: "M5 12h.01M12 12h.01M19 12h.01", pin: "M12 17v5M9 3h6l-1 6 3 3H7l3-3z",
-  find: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", up: "M18 15l-6-6-6 6", check: "M20 6L9 17l-5-5", ext: "M14 3h7v7M10 14L21 3M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5", down: "M6 9l6 6 6-6", search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
+  find: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", up: "M18 15l-6-6-6 6", check: "M20 6L9 17l-5-5", info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16v-5M12 8h.01", palette: "M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.5-1.9-.3-1 .4-2.1 1.5-2.1H17a4 4 0 0 0 4-4c0-4.4-4-10-9-10zM7.5 12h.01M9 7.5h.01M14.5 7.5h.01", ext: "M14 3h7v7M10 14L21 3M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5", down: "M6 9l6 6 6-6", search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3", globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
 };
 const ic = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[n]}"/></svg>`;
 document.querySelectorAll("[data-ic]").forEach((b) => b.insertAdjacentHTML("afterbegin", ic(b.dataset.ic)));
@@ -80,7 +80,7 @@ async function boot() {
   await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   bareConn = new BareMux.BareMuxConnection("/baremux/worker.js");
-  try { serverImpersonate = !!(await (await fetch("/api/config", { cache: "no-store" })).json()).impersonate; } catch {}
+  try { const cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); serverImpersonate = !!cfg.impersonate; if (cfg.version) $("#ver").textContent = "Version " + cfg.version; } catch {}
   await applyTransport();
   ready = true;
   syncAdblock();
@@ -95,7 +95,7 @@ async function applyTransport() {
   if ((await bareConn.getTransport()) !== want) await bareConn.setTransport(want, [{ websocket: wisp }]);
   el.status.textContent = "Connected";
   el.status.title = real ? "Requests are sent with a real browser's TLS fingerprint" : "Requests are sent from your browser through the tunnel";
-  const row = $("#imp-row"); if (row) row.hidden = !serverImpersonate;
+  $("#imp-row").hidden = !serverImpersonate;
 }
 
 function newTab(url, page = "home") {
@@ -236,7 +236,7 @@ function onKey(e) {
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { if (closeDD()) return; $("#settings").hidden = true; closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -281,15 +281,23 @@ function drawWheel() {
   $("#wsat").value = s; $("#wprev").style.background = hsl(h, Math.max(s, 45), 70);
   const hx = toHex(h, Math.max(s, 45), 70); $("#whex").textContent = hx; $("#wnative").value = hx;
 }
+function drawSwatches() { const y = $(".spanes").scrollTop; drawSettings(); $(".spanes").scrollTop = y; }
 function drawSettings() {
   const t = prefs.theme;
-  $("#modes").innerHTML = MODES.map((m) => `<button type="button" class="${t.mode === m ? "on" : ""}" data-m="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join("");
-  $("#themes").innerHTML = Object.entries(PRESETS).map(([n, [h, s]]) => `<button class="sw${t.palette === n ? " on" : ""}" data-t="${n}" title="${n}" style="background:${hsl(h, s, 70)}"></button>`).join("");
+  $("#modes").innerHTML = MODES.map((m) => `<button type="button" role="radio" aria-checked="${t.mode === m}" class="mt${t.mode === m ? " on" : ""}" data-m="${m}"><span class="mp mp-${m === "auto" ? "auto" : m}"></span>${m[0].toUpperCase() + m.slice(1)}</button>`).join("");
+  const sw = Object.entries(PRESETS).map(([n, [h, sat]]) => [n, hsl(h, sat, 70), t.palette === n]);
+  if (t.palette === "custom") sw.push(["custom", hsl(t.h, Math.max(t.s, 45), 70), true]);
+  $("#themes").innerHTML = sw.map(([n, c, on]) => `<button type="button" class="sw${on ? " on" : ""}" data-t="${n}" title="${n[0].toUpperCase() + n.slice(1)}" aria-label="${n}" aria-pressed="${on}" style="background:${c}">${on ? ic("check") : ""}</button>`).join("");
   drawWheel();
   document.querySelectorAll(".switch[data-k]").forEach((b) => { b.classList.toggle("on", prefs[b.dataset.k]); b.setAttribute("aria-checked", prefs[b.dataset.k]); });
   $("#allowbox").hidden = !prefs.allow.length;
   $("#allowlist").innerHTML = prefs.allow.map((h, i) => `<button class="chip" data-al="${i}" title="Resume blocking on this site">${esc(h)} ✕</button>`).join("");
   if (filterInfo) $("#filter-info").textContent = filterInfo;
+  $("#engine-l").textContent = engine;
+  const nh = histList().length, nb = bookmarks().length;
+  $("#hist-n").textContent = nh ? `${nh} page${nh > 1 ? "s" : ""} saved` : "Nothing saved";
+  $("#bm-n").textContent = nb ? `${nb} bookmark${nb > 1 ? "s" : ""}` : "No bookmarks";
+  $("#clear-hist").disabled = !nh; $("#clear-bm").disabled = !nb;
 }
 $("#modes").addEventListener("click", (e) => { const b = e.target.closest("[data-m]"); if (b) setTheme({ mode: b.dataset.m }); });
 $("#themes").addEventListener("click", (e) => { const b = e.target.closest(".sw"); if (b) setTheme({ palette: b.dataset.t }); });
@@ -297,7 +305,7 @@ const wheelPick = (e) => {
   const r = $("#wheel").getBoundingClientRect(), dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
   const cur = prefs.theme.palette === "custom" ? prefs.theme.s : (PRESETS[prefs.theme.palette] || PRESETS.midnight)[1];
   prefs.theme = { ...prefs.theme, palette: "custom", h: (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, s: cur };
-  savePrefs(); applyTheme(); drawWheel(); document.querySelectorAll("#themes .sw").forEach((b) => b.classList.remove("on"));
+  savePrefs(); applyTheme(); drawWheel(); drawSwatches();
 };
 $("#wheel").addEventListener("pointerdown", (e) => { e.currentTarget.setPointerCapture(e.pointerId); wheelPick(e); });
 $("#wheel").addEventListener("pointermove", (e) => { if (e.buttons) wheelPick(e); });
@@ -313,12 +321,38 @@ document.querySelectorAll(".switch").forEach((b) => (b.onclick = () => {
   if (k === "restore") persistSession();
   if (k === "impersonate" && ready) applyTransport().then(() => toast("Applies to new requests. Reload open tabs to use it."));
 }));
-$("#engine").innerHTML = Object.keys(ENGINES).map((n) => `<option${n === engine ? " selected" : ""}>${n}</option>`).join("");
-$("#engine").onchange = (e) => { engine = e.target.value; db.set("engine", engine); };
-$("#clear-bm").onclick = () => { db.set("bookmarks", []); render(); };
-$("#open-settings").onclick = () => { drawSettings(); $("#settings").hidden = false; };
-$("#close-settings").onclick = () => ($("#settings").hidden = true);
-$("#settings").addEventListener("click", (e) => { if (e.target.id === "settings") e.target.hidden = true; });
+$("#engine-btn").insertAdjacentHTML("beforeend", ic("down"));
+$("#engine-btn").onclick = (e) => openDD(e.currentTarget, Object.keys(ENGINES).map((n) => [n, n]), engine, (n) => { engine = n; db.set("engine", n); $("#engine-l").textContent = n; });
+// destructive buttons ask twice: the first click arms the button for 3 seconds
+function armed(btn, label, action) {
+  btn.onclick = () => {
+    if (btn.classList.contains("arm")) { clearTimeout(btn._t); btn.classList.remove("arm"); btn.textContent = label; return action(); }
+    btn.classList.add("arm"); btn.textContent = "Click to confirm";
+    btn._t = setTimeout(() => { btn.classList.remove("arm"); btn.textContent = label; }, 3000);
+  };
+}
+armed($("#clear-hist"), "Clear", () => { db.set("history", []); refreshDiscover("history", true); drawSettings(); toast("History cleared"); });
+armed($("#clear-bm"), "Clear", () => { db.set("bookmarks", []); render(); drawSettings(); toast("Bookmarks cleared"); });
+// sections
+const PANES = ["appearance", "search", "privacy", "browser", "about"];
+function showPane(name) {
+  if (!PANES.includes(name)) name = "appearance";
+  db.set("settingsTab", name);
+  document.querySelectorAll("#set-nav [data-tab]").forEach((b) => { const on = b.dataset.tab === name; b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; });
+  document.querySelectorAll(".pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
+  $(".spanes").scrollTop = 0;
+}
+$("#set-nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) showPane(b.dataset.tab); });
+$("#set-nav").addEventListener("keydown", (e) => {
+  const d = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0; if (!d) return;
+  e.preventDefault(); const i = PANES.indexOf(db.get("settingsTab", "appearance")), n = PANES[(i + d + PANES.length) % PANES.length];
+  showPane(n); document.querySelector(`#set-nav [data-tab="${n}"]`).focus();
+});
+function openSettings(tab) { drawSettings(); showPane(tab || db.get("settingsTab", "appearance")); $("#settings").hidden = false; document.querySelector("#set-nav [aria-selected=true]").focus(); }
+const closeSettings = () => { closeDD(); $("#settings").hidden = true; };
+$("#open-settings").onclick = () => openSettings();
+$("#close-settings").onclick = closeSettings;
+$("#settings").addEventListener("click", (e) => { if (e.target.id === "settings") closeSettings(); });
 
 // cursor glow on search bars and cards
 let raf = 0;
@@ -815,7 +849,6 @@ loaders.history = async (q, key) => {
   }
   $("#d-body").innerHTML = html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : "");
 };
-$("#clear-hist").onclick = () => { db.set("history", []); refreshDiscover("history", true); toast("History cleared"); };
 
 // "Continue watching / reading" rows on the Anime and Manga pages
 function pushRecent(kind, entry) {
