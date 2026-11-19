@@ -22,6 +22,7 @@ const ICONS = {
   back: "M15 18l-6-6 6-6", forward: "M9 18l6-6-6-6", reload: "M21 12a9 9 0 1 1-3-6.7M21 4v5h-5",
   plus: "M12 5v14M5 12h14", close: "M18 6L6 18M6 6l12 12", sidebar: "M3 5h18v14H3zM9 5v14",
   star: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
+  edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
@@ -202,17 +203,95 @@ function render() {
 }
 
 const bookmarks = () => db.get("bookmarks", []);
-function renderTiles() {
-  const list = bookmarks().length ? bookmarks() : DEFAULT_TILES;
-  const custom = bookmarks().length > 0;
-  el.tiles.innerHTML = list.map((b, i) => `<div class="tile" data-u="${esc(b.url)}">${custom ? `<button class="rm" data-i="${i}" title="Remove">${ic("close")}</button>` : ""}${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("");
+const MAX_SC = 30;
+function shortcuts() { // the editable list on the home page; first run seeds it from bookmarks (older versions) or the defaults
+  let l = db.get("shortcuts", null);
+  if (!Array.isArray(l)) { const b = bookmarks(); l = (b.length ? b : DEFAULT_TILES).map(({ title, url }) => ({ title, url })); db.set("shortcuts", l); }
+  return l;
 }
+function renderTiles() {
+  const l = shortcuts();
+  el.tiles.innerHTML = l.map((b, i) => `<div class="tile" draggable="true" tabindex="0" data-i="${i}" data-u="${esc(b.url)}"><div class="tb"><button type="button" class="rm" data-act="edit" title="Edit" aria-label="Edit ${esc(b.title)}">${ic("edit")}</button><button type="button" class="rm" data-act="del" title="Remove" aria-label="Remove ${esc(b.title)}">${ic("close")}</button></div>${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("")
+    + (l.length < MAX_SC ? `<button type="button" class="tile add" data-act="add" title="Add shortcut">${ic("plus")}<span>Add</span></button>` : "");
+}
+let scEdit = -1;
+function openShortcut(i) {
+  scEdit = i; const b = i >= 0 ? shortcuts()[i] : { title: "", url: "" };
+  $("#sc-title").textContent = i >= 0 ? "Edit shortcut" : "Add shortcut";
+  $("#sc-name").value = b.title; $("#sc-url").value = b.url;
+  $("#sc-del").hidden = i < 0; document.querySelectorAll("#sc-form input").forEach((x) => x.classList.remove("bad"));
+  $("#scd").hidden = false; $("#sc-" + (i >= 0 ? "name" : "url")).focus();
+}
+const closeShortcut = () => { $("#scd").hidden = true; };
+function saveShortcut() {
+  const u = $("#sc-url"); let raw = u.value.trim(), url = "";
+  if (raw) { try { const x = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : "https://" + raw); if (/^https?:$/.test(x.protocol) && x.hostname.includes(".") || x.hostname === "localhost") url = x.href; } catch {} }
+  u.classList.toggle("bad", !url); if (!url) return u.focus();
+  const title = $("#sc-name").value.trim().slice(0, 40) || host(url), l = shortcuts();
+  if (scEdit >= 0) l[scEdit] = { title, url }; else if (l.length < MAX_SC) l.push({ title, url });
+  db.set("shortcuts", l); closeShortcut(); renderTiles(); drawSettings();
+}
+$("#sc-form").addEventListener("submit", (e) => { e.preventDefault(); saveShortcut(); });
+$("#sc-cancel").onclick = closeShortcut;
+$("#sc-del").onclick = () => { const l = shortcuts(); if (scEdit >= 0) l.splice(scEdit, 1); db.set("shortcuts", l); closeShortcut(); renderTiles(); drawSettings(); toast("Shortcut removed"); };
+$("#scd").addEventListener("mousedown", (e) => { if (e.target.id === "scd") closeShortcut(); });
+$("#sc-url").addEventListener("input", (e) => e.target.classList.remove("bad"));
 el.tiles.addEventListener("click", (e) => {
-  const rm = e.target.closest(".rm");
-  if (rm) { const l = bookmarks(); l.splice(+rm.dataset.i, 1); db.set("bookmarks", l); render(); return; }
-  const t = e.target.closest(".tile");
-  if (t) go(active, t.dataset.u);
+  const act = e.target.closest("[data-act]"), t = e.target.closest(".tile");
+  if (act) {
+    e.stopPropagation();
+    if (act.dataset.act === "add") return openShortcut(-1);
+    const i = +act.closest(".tile").dataset.i;
+    if (act.dataset.act === "edit") return openShortcut(i);
+    const l = shortcuts(); l.splice(i, 1); db.set("shortcuts", l); renderTiles(); drawSettings(); return toast("Shortcut removed");
+  }
+  if (t && t.dataset.u) go(active, t.dataset.u);
 });
+el.tiles.addEventListener("keydown", (e) => {
+  const t = e.target.closest(".tile[data-u]"); if (!t || e.target !== t) return;
+  if (e.key === "Enter") go(active, t.dataset.u);
+  else if (e.key === "Delete") { const l = shortcuts(); l.splice(+t.dataset.i, 1); db.set("shortcuts", l); renderTiles(); }
+});
+let dragI = -1; // drag a shortcut onto another to reorder
+el.tiles.addEventListener("dragstart", (e) => { const t = e.target.closest(".tile[data-i]"); if (!t) return; dragI = +t.dataset.i; t.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.dataset.u); });
+el.tiles.addEventListener("dragover", (e) => { const t = e.target.closest(".tile[data-i]"); if (dragI < 0 || !t) return; e.preventDefault(); el.tiles.querySelectorAll(".over").forEach((x) => x !== t && x.classList.remove("over")); t.classList.add("over"); });
+el.tiles.addEventListener("dragend", () => { dragI = -1; el.tiles.querySelectorAll(".drag,.over").forEach((x) => x.classList.remove("drag", "over")); });
+el.tiles.addEventListener("drop", (e) => {
+  const t = e.target.closest(".tile[data-i]"); if (dragI < 0 || !t) return; e.preventDefault();
+  const to = +t.dataset.i, l = shortcuts();
+  if (to !== dragI) { l.splice(to, 0, l.splice(dragI, 1)[0]); db.set("shortcuts", l); }
+  dragI = -1; renderTiles();
+});
+// ---------- PWA: install button, share target / launch URL, offline notice ----------
+let installEv = null;
+const isStandalone = () => ["standalone", "minimal-ui", "fullscreen", "window-controls-overlay"].some((m) => matchMedia(`(display-mode:${m})`).matches) || navigator.standalone === true;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function drawInstall() {
+  const can = !!installEv && !isStandalone();
+  $("#install-home").hidden = !can; $("#pwa-btn").hidden = !can;
+  $("#pwa-info").textContent = isStandalone() ? "You're using the installed app" : can ? "Add it to your desktop or home screen"
+    : isIOS ? "In Safari, tap Share, then Add to Home Screen" : "Use your browser's menu: Install app / Add to Home screen";
+}
+async function installApp() {
+  if (!installEv) return;
+  const ev = installEv; installEv = null; drawInstall();
+  try { ev.prompt(); await ev.userChoice; } catch {}
+}
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEv = e; drawInstall(); });
+addEventListener("appinstalled", () => { installEv = null; drawInstall(); toast("Cloudora installed"); });
+$("#install-home").onclick = $("#pwa-btn").onclick = installApp;
+drawInstall();
+// Web Share Target / "open with": /?url=... or ?text=... opens that address in a new tab
+function launchUrl() {
+  const q = new URLSearchParams(location.search); let u = "";
+  for (const k of ["url", "text", "title"]) { const m = /https?:\/\/[^\s]+/i.exec(q.get(k) || ""); if (m) { u = m[0]; break; } }
+  if (location.search) history.replaceState(history.state, "", location.pathname + location.hash);
+  return u;
+}
+const OFFLINE_MSG = "You're offline. Your shortcuts and settings still work, but websites need a connection.";
+function netState() { if (!navigator.onLine) showNotice(OFFLINE_MSG); else if (el.notice.textContent === OFFLINE_MSG) el.notice.hidden = true; }
+addEventListener("online", netState); addEventListener("offline", netState); netState();
+
 function showNotice(msg) { el.notice.textContent = msg; el.notice.hidden = false; }
 
 $("#bar").addEventListener("submit", (e) => { e.preventDefault(); const u = sgSel >= 0 && sg[sgSel] ? sg[sgSel].url : toUrl(el.addr.value); hideSugg(); if (u) go(active, u); el.addr.blur(); });
@@ -226,7 +305,8 @@ $("#toggle").onclick = () => el.app.classList.toggle("collapsed");
 function toggleBookmark() {
   if (!active.url) return;
   const l = bookmarks(), i = l.findIndex((b) => b.url === active.url);
-  if (i >= 0) l.splice(i, 1); else l.push({ url: active.url, title: active.title && active.title !== host(active.url) ? active.title : host(active.url) });
+  const title = active.title && active.title !== host(active.url) ? active.title : host(active.url);
+  if (i >= 0) l.splice(i, 1); else { l.push({ url: active.url, title }); const sc = shortcuts(); if (sc.length < MAX_SC && !sc.some((x) => x.url === active.url)) { sc.push({ url: active.url, title }); db.set("shortcuts", sc); } }
   db.set("bookmarks", l); render(); toast(i >= 0 ? "Bookmark removed" : "Bookmarked");
 }
 el.star.onclick = toggleBookmark;
@@ -239,7 +319,7 @@ function onKey(e) {
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#scd").hidden) return closeShortcut(); if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -301,6 +381,8 @@ function drawSettings() {
   $("#hist-n").textContent = nh ? `${nh} page${nh > 1 ? "s" : ""} saved` : "Nothing saved";
   $("#bm-n").textContent = nb ? `${nb} bookmark${nb > 1 ? "s" : ""}` : "No bookmarks";
   $("#clear-hist").disabled = !nh; $("#clear-bm").disabled = !nb;
+  const ns = shortcuts().length; $("#sc-n").textContent = ns ? `${ns} shortcut${ns > 1 ? "s" : ""}` : "None";
+  drawInstall();
 }
 $("#modes").addEventListener("click", (e) => { const b = e.target.closest("[data-m]"); if (b) setTheme({ mode: b.dataset.m }); });
 $("#themes").addEventListener("click", (e) => { const b = e.target.closest(".sw"); if (b) setTheme({ palette: b.dataset.t }); });
@@ -335,6 +417,7 @@ function armed(btn, label, action) {
   };
 }
 armed($("#clear-hist"), "Clear", () => { db.set("history", []); refreshDiscover("history", true); drawSettings(); toast("History cleared"); });
+armed($("#reset-sc"), "Reset", () => { db.set("shortcuts", DEFAULT_TILES.map((x) => ({ ...x }))); render(); drawSettings(); toast("Shortcuts reset"); });
 armed($("#clear-bm"), "Clear", () => { db.set("bookmarks", []); render(); drawSettings(); toast("Bookmarks cleared"); });
 // sections
 const PANES = ["appearance", "search", "privacy", "browser", "about"];
@@ -743,6 +826,12 @@ function openPage(p) {
   nav(p);
 }
 document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
+// logo -> home: a blank tab becomes the home page; from a website, jump to an open home tab (or make one)
+$("#brand").onclick = () => {
+  if (!active.url) return openPage("home");
+  const h = tabs.find((t) => !t.url && t.page === "home");
+  if (h) { select(h); nav("home"); } else openPage("home");
+};
 
 // ---------- #hash routing ----------
 //   #home  #history  #anime  #anime/search/<q>  #anime/info/<id>  #anime/watch/<id>/<ep>
@@ -1072,4 +1161,4 @@ navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (
 applyTheme();
 if (matchMedia("(max-width:720px)").matches) el.app.classList.add("collapsed");
 newTab();
-boot().then(restoreSession).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });
+boot().then(restoreSession).then(() => { const u = launchUrl(); if (u) newTab(u); }).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });

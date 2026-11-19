@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Cloudora</title>
   <link rel="icon" href="/favicon-black.ico" sizes="any" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-black-32.png" />
@@ -11,6 +11,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Cloudora: browse beyond the walls." />
+  <meta name="application-name" content="Cloudora" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Cloudora" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <script>try{const v=JSON.parse(localStorage.getItem("cloudora:vars")),r=document.documentElement.style;for(const k in v)r.setProperty(k=="color-scheme"?k:"--"+k,v[k]);document.documentElement.dataset.mode=v["color-scheme"]}catch{}
 window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelectorAll("link[rel=icon]").forEach(l=>l.remove());for(const[t,h]of[["image/x-icon","/favicon-"+c+".ico"],["image/png","/favicon-"+c+"-32.png"]]){const l=document.createElement("link");l.rel="icon";l.type=t;l.href=h;document.head.appendChild(l)}};setFavicon(document.documentElement.dataset.mode||"dark")</script>
   <link rel="stylesheet" href="style.css" />
@@ -22,7 +28,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
 <body>
 <div id="app">
   <aside id="sidebar">
-    <div class="brand"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" />Cloudora</div>
+    <button type="button" class="brand" id="brand" title="Home" aria-label="Cloudora home"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" />Cloudora</button>
     <button id="new-tab" data-ic="plus">New tab</button>
     <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button><button data-page="history">History</button></nav>
     <div id="tablist"></div>
@@ -55,6 +61,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
         <div id="notice" hidden></div>
         <form id="home-form" class="pill glow"><input id="home-q" placeholder="Search the web or type a URL" spellcheck="false" /></form>
         <div class="tiles" id="tiles"></div>
+        <button type="button" class="btn" id="install-home" hidden>Install Cloudora as an app</button>
       </section>
       <section id="discover" hidden>
         <header><h2 id="d-title"></h2><form id="d-form" class="pill glow"><input id="d-q" placeholder="Search…" spellcheck="false" /></form></header>
@@ -67,6 +74,14 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
   </main>
   <div id="shield-pop" hidden></div>
   <div id="ctx" role="menu" hidden></div>
+  <div id="scd" class="modal" hidden>
+    <form class="mbox" id="sc-form" role="dialog" aria-modal="true" aria-labelledby="sc-title" novalidate>
+      <h3 id="sc-title">Edit shortcut</h3>
+      <label>Name<input id="sc-name" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Example" /></label>
+      <label>Address<input id="sc-url" autocomplete="off" spellcheck="false" inputmode="url" placeholder="example.com" /></label>
+      <div class="mact"><button type="button" class="btn danger" id="sc-del">Delete</button><span class="sp"></span><button type="button" class="btn" id="sc-cancel">Cancel</button><button class="btn pri" id="sc-save">Save</button></div>
+    </form>
+  </div>
   <div id="toast" hidden></div>
   <div id="settings" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="set-title">
@@ -131,12 +146,15 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
           <div class="group">
             <div class="srow"><div class="st"><b>Browsing history</b><small id="hist-n"></small></div><button type="button" class="btn danger" id="clear-hist">Clear</button></div>
             <div class="srow"><div class="st"><b>Bookmarks</b><small id="bm-n"></small></div><button type="button" class="btn danger" id="clear-bm">Clear</button></div>
+            <div class="srow"><div class="st"><b>Home shortcuts</b><small id="sc-n"></small></div><button type="button" class="btn danger" id="reset-sc">Reset</button></div>
           </div>
         </section>
 
         <section class="pane" role="tabpanel" data-pane="about" hidden>
-          <div class="about"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" /><div><h3>Cloudora</h3><small class="muted" id="ver">Version 0.6.2</small></div></div>
+          <div class="about"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" /><div><h3>Cloudora</h3><small class="muted" id="ver">Version 0.6.6</small></div></div>
           <p class="lede">Browse beyond the walls. Pages are fetched by your server and rendered with Scramjet.</p>
+          <h5>App</h5>
+          <div class="group"><div class="srow"><div class="st"><b>Install Cloudora</b><small id="pwa-info">Add it to your desktop or home screen</small></div><button type="button" class="btn" id="pwa-btn" hidden>Install</button></div></div>
           <h5>Keyboard shortcuts</h5>
           <div class="group pad"><dl class="keys">
             <dt><kbd>Alt</kbd><kbd>T</kbd></dt><dd>New tab</dd>

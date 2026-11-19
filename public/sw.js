@@ -31,7 +31,29 @@ const cosReady = () => cosP || (cosP = (async () => {
     cos = new Cosmetic(d); runtimeSrc = rt;
   } catch (e) { console.warn("[cloudora] cosmetic lists unavailable", e); }
 })());
-self.addEventListener("install", (e) => e.waitUntil(netReady));
+// ---------- PWA: the app shell is cached so Cloudora opens offline (sites themselves still need the network) ----------
+const SHELL_CACHE = "cloudora-shell";
+const SHELL = ["/", "/style.css", "/app.js", "/provider.js", "/transport-impersonate.mjs", "/site.webmanifest",
+  "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png",
+  "/logo-white.png", "/logo-black.png", "/favicon-black.ico", "/favicon-white.ico", "/favicon-black-32.png", "/favicon-white-32.png"];
+const precache = () => caches.open(SHELL_CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => {})))).catch(() => {});
+self.addEventListener("install", (e) => e.waitUntil(Promise.all([netReady, precache()])));
+self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("cloudora-") && k !== SHELL_CACHE).map((k) => caches.delete(k)))).catch(() => {})));
+const isShell = (u) => u.origin === self.location.origin && (SHELL.includes(u.pathname) || u.pathname === "/index.html");
+// network first (so updates show up immediately), cached copy when the network is gone
+async function shellFetch(event) {
+  const req = event.request, cache = await caches.open(SHELL_CACHE);
+  const key = req.mode === "navigate" ? "/" : req;
+  try {
+    const res = await fetch(req);
+    if (res.ok && res.type === "basic") cache.put(key, res.clone()).catch(() => {});
+    return res;
+  } catch (err) {
+    const hit = await cache.match(key, { ignoreSearch: true });
+    if (hit) return hit;
+    throw err;
+  }
+}
 
 // ---------- helpers ----------
 const prefix = () => scramjet.config.prefix || "/scramjet/";
@@ -127,7 +149,11 @@ const blockedPage = (url) => new Response(
 
 async function handle(event) {
   await scramjet.loadConfig();
-  if (!scramjet.route(event)) return fetch(event.request);
+  if (!scramjet.route(event)) {
+    const u = new URL(event.request.url);
+    if (event.request.method === "GET" && (isShell(u) || (event.request.mode === "navigate" && u.origin === self.location.origin && u.pathname === "/"))) return shellFetch(event);
+    return fetch(event.request);
+  }
   await ready;
   const req = event.request;
   if (!adblock) return scramjet.fetch(event);

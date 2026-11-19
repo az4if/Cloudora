@@ -1,156 +1,98 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/logo-white.png">
+  <img src="public/logo-black.png" alt="Cloudora" width="84">
+</picture>
+
 # Cloudora
 
-Cloudora is a tiny browser-in-a-browser: tabs, address bar, back/forward/reload. Pages are fetched
-by **your server**, not your device, and rendered with Scramjet.
+**Browse beyond the walls.**
+A self-hosted browser in your browser. Pages are fetched by your server and rendered with [Scramjet](https://github.com/MercuryWorkshop/scramjet).
+
+</div>
 
 ## Features
-- Tabs, bookmarks (star), cursor-following glow on search bars and cards
-- **Themes:** Auto / Light / Dark (true black) modes (sun/moon button in the toolbar), 8 color presets,
-  and a color wheel + exact color picker in Settings for any color you like
-- **Ad & tracker blocker** (shield button in the toolbar + Settings > Privacy): runs the real
-  EasyList, EasyPrivacy and uBlock Origin filter lists (~121k network rules, ~31k element-hiding rules,
-  ~10k scriptlet rules). The service worker blocks requests (with uBO-style redirect stubs), injects the
-  hiding CSS and scriptlets before the page's own scripts run, and guards against popups that have no
-  user click. The shield shows how many requests were blocked on the current page and lets you pause
-  blocking per site. Not covered: procedural cosmetic filters (`:has-text`...), HTML filtering, `removeparam`,
-  and in-stream video ads (YouTube).
-- **Browser:** history (Alt+H), address-bar suggestions (bookmarks, history, live search suggestions), pin /
-  duplicate / drag-reorder tabs, reopen closed tab (Alt+Shift+T), restore tabs on start, find in page (Alt+F),
-  zoom (Alt +/-/0), Alt+1..9 to switch tabs, Alt+D bookmark, tab right-click menu. Shortcuts also work while a
-  page has focus.
-- **Anime:** trending, popular, search and details from AniList, official "where to watch" links, and a **built-in player** (HLS/MP4, subtitles, speed, resume, auto-next) when you configure a source API (below)
-- **Manga:** the Manga button opens https://atsu.moe/ in a proxied tab (the built-in MangaDex reader below is still in the code but no longer reachable from the UI). Original MangaDex description: browse, search and read in the app using the public MangaDex API. Community translations are labeled **Unofficial**; publisher links and official chapters are labeled **Official**
-- Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
-- The server needs outbound access to graphql.anilist.co, api.mangadex.org and their
-  image hosts. Manga page images load straight from MangaDex's servers into the visitor's browser.
 
-## Run
-    npm install
-    npm start          # http://localhost:8080  (set PORT to change)
+- **Browser:** tabs, bookmarks, history, find in page, address-bar suggestions, keyboard shortcuts, editable home shortcuts
+- **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists, with a per-site pause
+- **Anime:** browse and search AniList, with a built-in embed player (batched episodes, server list)
+- **Manga:** opens [atsu.moe](https://atsu.moe/) in a tab
+- **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
+- **Themes:** auto / light / dark, accent presets or any custom colour
+- **Installable:** works as a PWA, and the app shell opens offline
 
-Service workers need **https** (localhost is exempt), so put it behind a domain + TLS when hosting
-(Caddy, Cloudflare, or a host like Render/Railway/Fly/a VPS). Static hosts (GitHub Pages) won't
-work: the Wisp tunnel needs a live server.
+## Quick start
 
-## Deploying
-Cloudora needs a **live Node server** (for the Wisp websocket tunnel), so static hosts like Vercel,
-Netlify and GitHub Pages won't work. Use Render, Railway, Fly.io or a VPS.
+```sh
+npm install
+npm start          # http://localhost:8080
+```
 
-On Render: New > Web Service, connect the repo, Build Command `npm install` (or Render's default `yarn install && yarn build`), Start Command `npm start`.
-Add your domain under Settings > Custom Domains (https is automatic).
-Free instances sleep after ~15 min idle, so the first visit afterward is slow.
+Needs Node 22. Service workers require **https** (localhost is exempt), so put it behind a domain with TLS when hosting.
+It needs a live Node server for the Wisp tunnel, so static hosts won't work. Render, Railway, Fly.io or a VPS do.
 
-## How it works
-    your browser ── service worker (Scramjet rewrites pages) ── bare-mux + libcurl
-         └── websocket /wisp/ ──> src/index.js (Wisp server) ──> the real website
+### Optional: real-browser fetching
 
-- `src/index.js`  server: static files + Wisp websocket tunnel
-- `public/sw.js`  service worker that intercepts proxied requests
-- `public/app.js` browser UI (tabs, navigation, address bar)
+```sh
+pip install -r requirements.txt
+```
 
-## Notes
-- Datacenter IPs trigger CAPTCHAs/blocks on Google, YouTube, etc. A home/residential host works better.
-- Edit `wisp.options` in `src/index.js` to block hosts or change DNS.
-- Credit: Mercury Workshop (Scramjet, bare-mux, libcurl-transport, wisp-js), AGPL/MIT per package.
+With Python and `curl_cffi` installed, the server fetches pages with a real browser's TLS and HTTP/2 fingerprint, so fewer sites treat
+the proxy as a bot. Without them Cloudora quietly falls back to libcurl.js.
 
-## Player source API (optional)
-The anime player also includes 24 built-in iframe providers. AniList and MAL IDs are supplied automatically by Cloudora.
+## Configuration
 
-The built-in player includes the iframe providers above. To add a licensed HLS/MP4 source API, set these environment
-variables on your server (e.g. in Render > Environment) to point at an API **you are licensed to use**
-(your own media server, a licensed provider, etc.):
+| Variable | Purpose |
+| --- | --- |
+| `PORT` | Port to listen on (default `8080`) |
+| `STREAM_API`, `STREAM_API_KEY` | Add a direct HLS/MP4 source API you are licensed to use |
+| `CLOUDORA_IMPERSONATE=0` | Turn off real-browser fetching |
+| `CURL_CFFI=0` | Never use `curl_cffi` for upstream API requests |
+| `UPSTREAM_UA` | Override the user agent for server-side requests |
+| `CLOUDORA_ALLOW_LOCAL=1` | Let the tunnel reach localhost/LAN. **Local testing only, never on a public server** |
 
-    STREAM_API=https://your-api.example.com      # base URL, required
-    STREAM_API_KEY=...                           # optional, sent as "Authorization: Bearer ..."
-
-For compatibility with anime-provider deployments, `ANIME_API_URL` and
-`ANIME_API_KEY` may be used as aliases for `STREAM_API` and `STREAM_API_KEY`.
+<details>
+<summary>Source API format</summary>
 
 Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expects:
 
-    { "sources":   [ { "url": "https://.../master.m3u8", "type": "hls",  "label": "1080p" },
-                     { "url": "https://.../ep1.mp4",      "type": "mp4",  "label": "720p"  } ],
-      "subtitles": [ { "url": "https://.../en.vtt", "lang": "en", "label": "English" } ] }
+```json
+{
+  "sources": [
+    { "url": "https://.../master.m3u8", "type": "hls", "label": "1080p" },
+    { "url": "https://.../ep1.mp4", "type": "mp4", "label": "720p" }
+  ],
+  "subtitles": [{ "url": "https://.../en.vtt", "lang": "en", "label": "English" }]
+}
+```
 
-Each source may include `"official": true` (shows an **Official** badge; the default is **Unofficial**). Set `STREAM_API_OFFICIAL=1` if your whole API is an official one. `type` can also be `"embed"` (opens the URL in a Cloudora tab). Video and subtitle hosts must allow
-cross-site playback (CORS). With no `STREAM_API` set, anime pages show official links only.
+Add `"official": true` to a source for an **Official** badge, or set `STREAM_API_OFFICIAL=1` for the whole API.
+Video and subtitle hosts must allow cross-site playback (CORS).
 
-## Manga provider
+</details>
 
-Manga search, chapter lists and chapter artwork use the public MangaDex API. The
-default is `https://api.mangadex.org`; set `MANGADEX_URL` or `MANGA_API_URL` to
-use another compatible MangaDex API deployment. Chapter artwork is downloaded
-through Cloudora's same-origin `/api/md-image` relay, subject to MangaDex host
-validation.
+## How it works
 
-Manga details include named unofficial external search/source buttons for
-MangaDex, Comick, MangaFire, MangaBuddy, MangaNato, Bato, MangaPark and Weeb
-Central. These buttons open external sites and are separate from official
-publisher/store links.
+```
+browser ── service worker (Scramjet) ── bare-mux ──┬─ libcurl.js ── Wisp /wisp/ ──┐
+                                                   └─ /api/proxy ── curl_cffi ────┴─> website
+```
 
-## Ad-block lists
-`adblock-src/` holds the raw lists (taken from uBlock Origin 1.75.0's bundled assets) and
-`scripts/build-filters.mjs` compiles them into `public/adblock/` (`net.json`, `cosmetic.json`, `generic.css`,
-redirect stubs). Already built; re-run when you change lists:
+| Path | Role |
+| --- | --- |
+| `src/index.js` | Server: static files, Wisp tunnel, API routes |
+| `public/sw.js` | Service worker: proxying, ad blocking, offline shell |
+| `public/app.js` | Browser UI |
 
-    npm run build-filters                         # recompile adblock-src/*.txt
-    npm run update-filters                        # download fresh copies first (needs internet)
-    node scripts/build-filters.mjs --extra=my-rules.txt   # add your own rules (ABP/uBO syntax)
+## Development
 
-`npm test` runs the engine tests. Filter lists are © their authors (GPLv3 / CC BY-SA).
+```sh
+npm test                 # unit tests
+npm run build-filters    # rebuild the ad-block lists from adblock-src/
+```
 
-## Local testing
-`CLOUDORA_ALLOW_LOCAL=1 npm start` lets the tunnel reach 127.0.0.1/LAN so you can test against a local page.
-Never set it on a public server.
+## Credits
 
-
-## Player, loaders and upstream fetching (0.6.x)
-- **Player:** the iframe is never sandboxed (providers refuse to play in a sandboxed frame). The server menu is a plain
-  styled list, not a dropdown, and remembers the last server you used. Episodes in the detail popup are split into batches of
-  100 with a dropdown to switch batch; reopening a show jumps to the batch you were watching.
-- **Why embeds were blank before:** the page was sent with `Cross-Origin-Embedder-Policy: require-corp`, which makes the browser
-  block every third-party iframe. Chromium keeps that isolation (needed for proxied pages' synchronous XHR) and the player uses a
-  `credentialless` iframe, which is exempt. Firefox and Safari have no such attribute, so the server leaves isolation off for them.
-- **User agent:** all server-side requests (AniList, MangaDex, images, source API, suggestions) send a real Chrome user agent
-  (`UPSTREAM_UA` to override).
-- **curl_cffi fallback (optional):** if an upstream answers like a bot filter (403/429/503 or a Cloudflare challenge), the request is retried
-  through `scripts/curl_fetch.py`, which uses [curl_cffi](https://curl-cffi.readthedocs.io/) to send a real Chrome TLS/HTTP2 fingerprint.
-  Needs `python3` and `pip install -r requirements.txt` on the server; if missing it is skipped. `CURL_CFFI=0` disables it,
-  `CURL_CFFI=1` uses it for every request, `CURL_IMPERSONATE=chrome131` picks another browser, `PYTHON=` sets the binary.
-- **Watch page:** just a Back button, the player, the episode list (with the 100-episode batch dropdown) and the server list. Pick another episode or server without leaving it.
-- **Source API first:** when `STREAM_API` is set, its direct HLS/MP4 sources are tried first and listed above the embed servers.
-
-## Real-browser fetching for normal browsing
-The default tunnel (libcurl.js in your browser) does its own TLS, so sites see a curl-style TLS/HTTP2 fingerprint even with a perfect
-user agent. With Python + curl_cffi installed on the server (`pip install -r requirements.txt`), Cloudora instead sends each proxied
-HTTP request to the server (`POST /api/proxy`), which fetches it through `scripts/curl_proxy.py` with a real browser's TLS
-(JA3/JA4), HTTP/2 settings and header order.
-- The browser profile follows your own User-Agent (Chrome/Edge/Brave/Opera -> Chrome, Firefox -> Firefox, Safari/iOS -> Safari), so TLS,
-  headers and `navigator.userAgent` agree. Your real headers (sec-ch-ua, sec-fetch-*, cookies) are forwarded; cookies and redirects stay
-  with the page, nothing is kept server-side.
-- Same network rules as the Wisp tunnel: no localhost/private/link-local/bare-IP targets (the resolved address is pinned so DNS can't be
-  switched mid-request), header-injection checks, request size and concurrency limits.
-- Settings > "Real-browser fetching" turns it on/off per visitor (shown only when the server supports it). Without Python/curl_cffi it
-  silently stays on libcurl.js. WebSockets always use Wisp.
-- Env: `CLOUDORA_IMPERSONATE=0` disable, `IMPERSONATE_PROFILE=chrome142` force a profile, `CLOUDORA_DEBUG=1` log each proxied request.
-- Limits: it can't change what the *page's own JavaScript* reveals (that already runs in your real browser), and sites that need
-  a solved CAPTCHA/JS challenge will still show it. Everything goes through your server's IP, so a datacenter IP can still be flagged.
-
-## Page addresses (#hash routes)
-The Anime and Manga pages are driven by the address bar hash, so reload, back/forward and copied links all work:
-
-    #home   #history
-    #anime  #anime/search/<query>  #anime/info/<anilist id>  #anime/watch/<anilist id>/<episode>
-    #manga  (redirects to #home and opens atsu.moe in a tab; the older #manga/... routes below do the same)
-    #manga/search/<query>  #manga/info/<mangadex id>  #manga/read/<mangadex id>/<chapter>
-
-Opening a card or searching adds a history entry; switching episode/chapter replaces the current one, so the Back button (and Esc)
-always steps out one layer: watch/read -> list, info popup -> list. While watching or reading, the cards behind are hidden and the
-list's scroll position is restored on the way back. "Continue watching / reading" cards show an x on hover to remove them.
-
-## Settings
-Settings opens as a sidebar sheet with five sections: **Appearance** (Auto/Light/Dark preview tiles, accent swatches, custom color wheel,
-cursor glow), **Search** (engine menu), **Privacy** (ads & tracker blocking, paused sites, real-browser fetching when the server supports it),
-**Browser** (restore tabs, save history, clear history/bookmarks with a confirm click) and **About** (version from the server, keyboard
-shortcuts). The last section you used is remembered; arrow keys move between sections and Esc closes. On phones the sidebar becomes a
-tab bar across the top.
+Built on Scramjet, bare-mux, libcurl.js, wisp-js and hls.js by Mercury Workshop and others. Anime data from AniList.
+Filter lists are © their authors (GPLv3 / CC BY-SA).
