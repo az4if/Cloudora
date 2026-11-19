@@ -104,7 +104,7 @@ redirect stubs). Already built; re-run when you change lists:
 Never set it on a public server.
 
 
-## Player, loaders and upstream fetching (0.6)
+## Player, loaders and upstream fetching (0.6.x)
 - **Player:** the iframe is never sandboxed (providers refuse to play in a sandboxed frame). The server menu is a plain
   styled list, not a dropdown, and remembers the last server you used. Episodes in the detail popup are split into batches of
   100 with a dropdown to switch batch; reopening a show jumps to the batch you were watching.
@@ -135,3 +135,14 @@ HTTP request to the server (`POST /api/proxy`), which fetches it through `script
 - Env: `CLOUDORA_IMPERSONATE=0` disable, `IMPERSONATE_PROFILE=chrome142` force a profile, `CLOUDORA_DEBUG=1` log each proxied request.
 - Limits: it can't change what the *page's own JavaScript* reveals (that already runs in your real browser), and sites that need
   a solved CAPTCHA/JS challenge will still show it. Everything goes through your server's IP, so a datacenter IP can still be flagged.
+
+## Page addresses (#hash routes)
+The Anime and Manga pages are driven by the address bar hash, so reload, back/forward and copied links all work:
+
+    #home   #history
+    #anime  #anime/search/<query>  #anime/info/<anilist id>  #anime/watch/<anilist id>/<episode>
+    #manga  #manga/search/<query>  #manga/info/<mangadex id>  #manga/read/<mangadex id>/<chapter>
+
+Opening a card or searching adds a history entry; switching episode/chapter replaces the current one, so the Back button (and Esc)
+always steps out one layer: watch/read -> list, info popup -> list. While watching or reading, the cards behind are hidden and the
+list's scroll position is restored on the way back. "Continue watching / reading" cards show an x on hover to remove them.

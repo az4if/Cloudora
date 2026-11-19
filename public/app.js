@@ -34,7 +34,7 @@ document.querySelectorAll("[data-ic]").forEach((b) => b.insertAdjacentHTML("afte
 
 const el = { app: $("#app"), tabs: $("#tablist"), views: $("#views"), home: $("#home"), addr: $("#address"),
   tiles: $("#tiles"), disc: $("#discover"), notice: $("#notice"), status: $("#status"), star: $("#star") };
-let tabs = [], active = null, scramjet = null, ready = false, nextId = 1, dragTab = null;
+let routing = false, tabs = [], active = null, scramjet = null, ready = false, nextId = 1, dragTab = null;
 const closed = []; // recently closed tabs, for Reopen closed tab
 let engine = db.get("engine", "DuckDuckGo");
 const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, impersonate: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
@@ -187,7 +187,7 @@ function render() {
   el.disc.hidden = !(blank && active.page !== "home");
   if (!el.home.hidden) renderTiles();
   if (!el.disc.hidden) {
-    if (!discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
+    if (!routing && !discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
     showDiscover(active.page, $("#d-q").value.trim());
   }
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", blank && b.dataset.page === active.page));
@@ -195,6 +195,7 @@ function render() {
   el.star.classList.toggle("on", !!active.url && bookmarks().some((b) => b.url === active.url));
   document.title = active.url ? active.title + " · Cloudora" : "Cloudora";
   drawShield();
+  syncHash();
 }
 
 const bookmarks = () => db.get("bookmarks", []);
@@ -235,7 +236,7 @@ function onKey(e) {
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { if (closeDD()) return; $("#settings").hidden = true; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; $("#settings").hidden = true; closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -366,17 +367,19 @@ const loaders = {
     if (key === discKey) $("#d-body").innerHTML = (q ? "" : recentHtml("manga")) + rowsHtml(rows, data, (d) => d.data.map(mcard));
   },
 };
-let discKey = "";
-async function showDiscover(page, q = "") {
+let discKey = "", discLoad = Promise.resolve();
+function showDiscover(page, q = "") {
   const key = page + "|" + q;
-  if (key === discKey) return;
+  if (key === discKey) return discLoad;
   discKey = key;
   $("#d-title").textContent = PAGE_TITLES[page]; $("#d-q").placeholder = "Search " + PAGE_TITLES[page].toLowerCase() + "…";
   $("#d-body").innerHTML = spinner("Loading " + PAGE_TITLES[page].toLowerCase() + "…") + skeleton();
-  try { await loaders[page](q, key); }
-  catch (err) { if (key === discKey) { discKey = ""; $("#d-body").innerHTML = `<p class="muted">Couldn't load this page (${esc(err.message)}).</p>`; } }
+  return (discLoad = (async () => {
+    try { await loaders[page](q, key); }
+    catch (err) { if (key === discKey) { discKey = ""; $("#d-body").innerHTML = `<p class="muted">Couldn't load this page (${esc(err.message)}).</p>`; } }
+  })());
 }
-$("#d-form").addEventListener("submit", (e) => { e.preventDefault(); showDiscover(active.page, $("#d-q").value.trim()); });
+$("#d-form").addEventListener("submit", (e) => { e.preventDefault(); nav(listHash(active.page, $("#d-q").value.trim())); });
 
 // MangaDex
 const MDQ = "&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&availableTranslatedLanguage[]=en&hasAvailableChapters=true";
@@ -393,16 +396,35 @@ const closeBtn = () => `<button class="ghost dx">${ic("close")}</button>`;
 const chLabel = (c) => "Ch. " + (c.attributes.chapter || "?") + (c.attributes.title ? " – " + c.attributes.title : "");
 let reading = null;
 const badge = (official) => official ? '<span class="badge ok">Official</span>' : '<span class="badge warn">Unofficial</span>';
+async function loadManga(id) {
+  let m = mItems.get(id);
+  if (!m) { m = (await md(`/manga/${id}?includes[]=cover_art`)).data; mItems.set(id, m); }
+  return m;
+}
+const chapterCache = new Map();
+async function loadChapters(id) {
+  if (chapterCache.has(id)) return chapterCache.get(id);
+  const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=1&contentRating[]=safe&contentRating[]=suggestive`);
+  const seenH = new Set(), seenO = new Set();
+  const hosted = f.data.filter((c) => !c.attributes.externalUrl && c.attributes.pages > 0 && !seenH.has(c.attributes.chapter) && seenH.add(c.attributes.chapter)).reverse();
+  const ext = f.data.filter((c) => /^https?:\/\//.test(c.attributes.externalUrl || "") && !seenO.has(c.attributes.chapter) && seenO.add(c.attributes.chapter)).slice(0, 24);
+  if (chapterCache.size > 20) chapterCache.delete(chapterCache.keys().next().value);
+  chapterCache.set(id, { hosted, ext });
+  return { hosted, ext };
+}
+const chKey = (c, i) => c.attributes.chapter ?? "i" + i; // the chapter piece of #manga/read/<id>/<chapter>
 async function mangaDetail(id) {
-  const d = $("#d-detail"), m = mItems.get(id);
-  if (!m) return;
+  const d = $("#d-detail");
+  d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}${spinner("Loading details…")}</div>`;
+  let m;
+  try { m = await loadManga(id); } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; return; }
+  if (d.hidden) return; // closed while loading
   const L = m.attributes.links || {};
   const stores = [["engtl", "Official English"], ["amz", "Amazon"], ["ebj", "eBookJapan"], ["cdj", "CDJapan"]].filter(([k]) => /^https?:\/\//.test(L[k] || ""));
   const chip = (url, text) => `<button class="chip" data-open="${esc(url)}">${esc(text)}</button>`;
   const storeChips = stores.map(([k, n]) => chip(L[k], n)).join("");
   const tags = m.attributes.tags.slice(0, 8).map((t) => `<span class="chip">${esc(t.attributes.name.en || "")}</span>`).join("");
-  const desc = (m.attributes.description.en || "No description.").replace(/\[[^\]]*\]|[*_>`#]/g, "").slice(0, 700);
-  d.hidden = false;
+  const desc = ((m.attributes.description || {}).en || "No description.").replace(/\[[^\]]*\]|[*_>`#]/g, "").slice(0, 700);
   d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div class="dbody"><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
     <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p>
     <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || spinner("", "sm")}</div>
@@ -415,14 +437,13 @@ async function mangaDetail(id) {
     return url ? chip(url, server.name) : "";
   }).join("");
   try {
-    const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=1&contentRating[]=safe&contentRating[]=suggestive`);
-    const seenH = new Set(), seenO = new Set();
-    const hosted = f.data.filter((c) => !c.attributes.externalUrl && c.attributes.pages > 0 && !seenH.has(c.attributes.chapter) && seenH.add(c.attributes.chapter)).reverse();
-    const ext = f.data.filter((c) => /^https?:\/\//.test(c.attributes.externalUrl || "") && !seenO.has(c.attributes.chapter) && seenO.add(c.attributes.chapter)).slice(0, 24);
+    const { hosted, ext } = await loadChapters(id);
+    if (!$("#mo")) return; // popup was closed or replaced
     reading = { m, chapters: hosted };
     $("#mo").innerHTML = (storeChips + ext.map((c) => chip(c.attributes.externalUrl, "Read " + chLabel(c))).join("")) || '<span class="muted">No official links listed.</span>';
     $("#chs").innerHTML = hosted.length ? hosted.map((c, i) => `<button class="chip" data-ch="${i}">${esc(chLabel(c))}</button>`).reverse().join("") : '<p class="muted">No English chapters hosted on MangaDex.</p>';
   } catch (err) {
+    if (!$("#mo")) return;
     $("#mo").innerHTML = storeChips || '<span class="muted">No official links listed.</span>';
     $("#chs").innerHTML = `<p class="muted">Couldn't load chapters (${esc(err.message)}).</p>`;
   }
@@ -430,8 +451,8 @@ async function mangaDetail(id) {
 async function openChapter(i) {
   const { m, chapters } = reading, c = chapters[i], rd = $("#reader");
   pushRecent("manga", { id: m.id, m, label: chLabel(c) });
-  $("#d-detail").hidden = true; rd.hidden = false; rd.scrollTop = 0;
-  rd.innerHTML = `<div class="rhead"><button class="ghost" id="r-close">${ic("close")}</button><b>${esc(mTitle(m))} · ${esc(chLabel(c))}</b>
+  $("#d-detail").hidden = true; rd.hidden = false; rd.scrollTop = 0; syncView();
+  rd.innerHTML = `<div class="rhead"><button class="btn back" id="r-close">${ic("back")}Back</button><b>${esc(mTitle(m))} · ${esc(chLabel(c))}</b>
     <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages">${spinner("Loading pages…")}</div>`;
   try {
     const s = await md(`/at-home/server/${c.id}`);
@@ -498,18 +519,31 @@ function pickBatch(btn) {
   openDD(btn, Array.from({ length: n }, (_, b) => { const [a, z] = epRange(b, w.count); return [b, `${a} – ${z}`, w.last >= a && w.last <= z ? "watching" : ""]; }), w.batch, (b) => { w.batch = b; renderEps(); });
 }
 
+const animeCache = new Map();
+async function loadAnime(id) {
+  if (!animeCache.has(id)) {
+    animeCache.set(id, (await gql(ONE, { id })).Media);
+    if (animeCache.size > 30) animeCache.delete(animeCache.keys().next().value);
+  }
+  return animeCache.get(id);
+}
+function makeWatching(id, m) {
+  const count = Math.min(5000, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
+  const last = Math.min(count, (db.get("recent:anime", []).find((x) => x.id === id) || {}).ep || 0); // reopen on the batch you were watching
+  return { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large, last, batch: last ? Math.floor((last - 1) / BATCH) : 0 };
+}
 async function animeDetail(id) {
   const d = $("#d-detail");
   d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}${spinner("Loading details…")}</div>`;
   try {
-    const m = (await gql(ONE, { id })).Media;
+    const m = await loadAnime(id);
+    if (d.hidden) return; // closed while loading
     const desc = (m.description || "No description.").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
     const seen = new Set();
     const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
       .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
-    const count = Math.min(5000, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
-    const last = Math.min(count, (db.get("recent:anime", []).find((x) => x.id === id) || {}).ep || 0); // reopen on the batch you were watching
-    watching = { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large, last, batch: last ? Math.floor((last - 1) / BATCH) : 0 };
+    if (!watching || watching.id !== id) watching = makeWatching(id, m);
+    const count = watching.count;
     const play = count ? `<h4>Play here ${badge(streamOfficial)}</h4>
       <div class="eprow">${count > BATCH ? `<button type="button" class="dd-btn" id="ep-batch" aria-haspopup="listbox" aria-expanded="false"><span id="ep-batch-l"></span>${ic("down")}</button>` : ""}<small class="muted">${count} episode${count > 1 ? "s" : ""}</small></div>
       <div class="chlist eps" id="eps"></div>` : "";
@@ -534,7 +568,7 @@ let player = { items: [], cur: -1 }, embedTimer = 0;
 function closePlayer() {
   clearTimeout(embedTimer); closeDD();
   const pl = $("#player"), v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); }
-  pl.hidden = true; pl.innerHTML = "";
+  pl.hidden = true; pl.innerHTML = ""; playing = null; syncView();
 }
 async function attach(v, src) {
   const pb = $("#p-badge"); if (pb) pb.innerHTML = badge(src.official ?? streamOfficial);
@@ -595,7 +629,7 @@ async function playEpisode(num) {
   w.last = num; w.batch = Math.floor((num - 1) / BATCH); renderEps();
   pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num, ep: num });
   closeDD(); clearTimeout(embedTimer);
-  $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0;
+  $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0; syncView();
   const many = w.count > BATCH;
   pl.innerHTML = `<div class="rhead"><button class="btn back" id="p-close">${ic("back")}Back</button><b>${esc(w.title)} · Episode ${num}</b></div>
     <div class="pbody">
@@ -639,7 +673,7 @@ async function playEpisode(num) {
   v.onloadedmetadata = () => { const t = db.get(key, 0); if (t > 10 && t < v.duration - 30) v.currentTime = t; v.playbackRate = +($("#p-speed .on")?.dataset.spd || 1); pload(""); pmsg(""); };
   v.onplaying = () => pload("");
   v.ontimeupdate = () => { if (Date.now() - last > 5000) { last = Date.now(); db.set(key, v.currentTime); } };
-  v.onended = () => { db.set(key, 0); if (num < w.count) playEpisode(num + 1); };
+  v.onended = () => { db.set(key, 0); if (num < w.count) nav(`anime/watch/${w.id}/${num + 1}`, "replace"); };
   v.onerror = () => { pload(""); pmsg("Couldn't play this source (the host may block cross-site playback). Try another server."); };
   useServer(0);
 }
@@ -647,26 +681,111 @@ async function playEpisode(num) {
 el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
   const hd = t.closest("[data-hdel]"); if (hd) { e.stopPropagation(); return histRemove(+hd.dataset.hdel); }
+  const rx = t.closest("[data-rx]"); if (rx) { e.stopPropagation(); return removeRecent(rx); }
   const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
-  const open = t.closest("[data-open]"); if (open) { d.hidden = true; return newTab(open.dataset.open); }
-  if (t.closest("#p-close")) return closePlayer();
+  const open = t.closest("[data-open]"); if (open) { if (!d.hidden) nav(listHash(active.page), "replace"); return newTab(open.dataset.open); }
+  if (t.closest("#p-close") || t.closest("#r-close")) return back();
   const eb = t.closest("#ep-batch, #w-batch"); if (eb) return pickBatch(eb);
   const sv = t.closest("[data-srv]"); if (sv) return useServer(+sv.dataset.srv);
   const sp = t.closest("[data-spd]"); if (sp) { $("#vid").playbackRate = +sp.dataset.spd; sp.parentNode.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === sp)); return; }
-  const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || playEpisode(+pn.dataset.pn);
-  const ep = t.closest("[data-ep]"); if (ep) return playEpisode(+ep.dataset.ep);
-  if (t.closest("#r-close")) { $("#reader").hidden = true; return; }
-  const rn = t.closest("[data-rn]"); if (rn) return rn.disabled || openChapter(+rn.dataset.rn);
-  const ch = t.closest("[data-ch]"); if (ch) return openChapter(+ch.dataset.ch);
-  if (t.closest(".dx") || t === d) { d.hidden = true; return; }
+  const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || nav(`anime/watch/${watching.id}/${pn.dataset.pn}`, "replace");
+  const ep = t.closest("[data-ep]"); if (ep) return nav(`anime/watch/${watching.id}/${ep.dataset.ep}`, "replace");
+  const rn = t.closest("[data-rn]"); if (rn) { if (rn.disabled) return; const i = +rn.dataset.rn; return nav(`manga/read/${reading.m.id}/${encodeURIComponent(chKey(reading.chapters[i], i))}`, "replace"); }
+  const ch = t.closest("[data-ch]"); if (ch) { const i = +ch.dataset.ch; return nav(`manga/read/${reading.m.id}/${encodeURIComponent(chKey(reading.chapters[i], i))}`, "replace"); }
+  if (t.closest(".dx") || t === d) return back();
   const c = t.closest(".mcard"); if (!c) return;
-  if (active.page === "manga") return mangaDetail(c.dataset.id);
-  animeDetail(+c.dataset.id);
+  nav(`${active.page}/info/${encodeURIComponent(c.dataset.id)}`);
 });
 function openPage(p) {
-  if (!active.url) { active.page = p; active.title = PAGE_TITLES[p]; render(); } else newTab(null, p);
+  if (!active.url) { active.page = p; active.title = PAGE_TITLES[p]; }
+  else newTab(null, p);
+  nav(p);
 }
 document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
+
+// ---------- #hash routing ----------
+//   #home  #history  #anime  #anime/search/<q>  #anime/info/<id>  #anime/watch/<id>/<ep>
+//   #manga #manga/search/<q> #manga/info/<id>   #manga/read/<id>/<chapter>
+// The hash is the single source of truth for what the Anime / Manga pages show, so reload, back/forward and shared links all work.
+const ID_RE = { anime: /^\d{1,8}$/, manga: /^[0-9a-f-]{36}$/ };
+function parseHash(h = location.hash) {
+  const p = h.replace(/^#\/?/, "").split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
+  const page = p[0]; if (!PAGE_TITLES[page]) return null;
+  const r = { page, view: "list", q: "" };
+  if (p[1] === "search" && page !== "home") return { ...r, view: "search", q: p.slice(2).join("/").trim() };
+  const ok = ID_RE[page] && ID_RE[page].test(p[2] || "");
+  if (p[1] === "info" && ok) return { ...r, view: "info", id: p[2] };
+  if (p[1] === (page === "anime" ? "watch" : "read") && ok) return { ...r, view: page === "anime" ? "watch" : "read", id: p[2], n: p[3] || "" };
+  return r;
+}
+const listHash = (page, q = ($("#d-q") ? $("#d-q").value.trim() : "")) => page + (q ? "/search/" + encodeURIComponent(q) : "");
+// mode "push" adds a history entry, "replace" swaps the current one. history.state.i counts the entries this app pushed.
+function nav(h, mode = "push") {
+  if ("#" + h === location.hash) mode = "replace";
+  const i = ((history.state && history.state.i) || 0) + (mode === "push" ? 1 : 0);
+  history[mode === "push" ? "pushState" : "replaceState"]({ i }, "", "#" + h);
+  return applyRoute();
+}
+function back(page = active.page) { if (((history.state && history.state.i) || 0) > 0) history.back(); else nav(listHash(page), "replace"); }
+function closeTop() {
+  if (active.url || ($("#player").hidden && $("#reader").hidden && $("#d-detail").hidden)) return false;
+  back(); return true;
+}
+// keep the address of a blank tab at #<its page> (and clear it for web pages) without disturbing a deeper route
+let routeReady = false; // until the address in the URL bar has been applied once, don't overwrite it
+function syncHash() {
+  if (!routeReady) return;
+  if (active.url) { if (location.hash) history.replaceState(history.state, "", location.pathname + location.search); return; }
+  const cur = parseHash();
+  if (!(cur && cur.page === active.page)) history.replaceState(history.state || { i: 0 }, "", "#" + active.page);
+}
+// While the player or reader is open the page behind it (cards, search) is hidden, so nothing shows through or scrolls under it
+let discScroll = 0;
+function syncView() {
+  const on = !$("#player").hidden || !$("#reader").hidden, was = el.disc.classList.contains("view");
+  if (on === was) return;
+  if (on) { discScroll = el.disc.scrollTop; el.disc.classList.add("view"); el.disc.scrollTop = 0; }
+  else { el.disc.classList.remove("view"); const sc = discScroll; discLoad.then(() => { el.disc.scrollTop = sc; }); }
+}
+let playing = null, readingNow = null, routeSeq = 0;
+async function applyRoute(initial = false) {
+  const r = parseHash(); if (!r || !active) return;
+  if (active.url) { if (!initial) return; newTab(null, r.page); }
+  else if (active.page !== r.page) { active.page = r.page; active.title = PAGE_TITLES[r.page]; }
+  const seq = ++routeSeq;
+  routing = true; $("#d-q").value = r.q; try { render(); } finally { routing = false; }
+  const d = $("#d-detail"), rd = $("#reader");
+  if (r.page === "home" || r.page === "history" || r.view === "list" || r.view === "search") { d.hidden = true; rd.hidden = true; closePlayer(); return syncView(); }
+  const stale = () => seq !== routeSeq;
+  const toInfo = (msg) => { if (msg) toast(msg); return nav(`${r.page}/info/${r.id}`, "replace"); };
+  if (r.view === "info") {
+    closePlayer(); rd.hidden = true;
+    await (r.page === "anime" ? animeDetail(+r.id) : mangaDetail(r.id));
+  } else if (r.page === "anime") { // watch
+    d.hidden = true; rd.hidden = true;
+    let w = watching && watching.id === +r.id ? watching : null;
+    if (!w) {
+      try { const m = await loadAnime(+r.id); if (stale()) return; w = watching = makeWatching(+r.id, m); }
+      catch (err) { return toInfo("Couldn't load this anime"); }
+    }
+    if (!w.count) return toInfo("No episode list for this anime yet");
+    const n = Math.max(1, Math.min(w.count, parseInt(r.n, 10) || 1));
+    if (String(n) !== r.n) return nav(`anime/watch/${r.id}/${n}`, "replace");
+    if (!(playing && playing.id === w.id && playing.n === n && !$("#player").hidden)) { playing = { id: w.id, n }; await playEpisode(n); }
+  } else { // read
+    d.hidden = true; closePlayer();
+    try {
+      const m = await loadManga(r.id), { hosted } = await loadChapters(r.id); if (stale()) return;
+      reading = { m, chapters: hosted };
+      const i = hosted.findIndex((c, k) => String(chKey(c, k)) === r.n);
+      if (i < 0) return toInfo(hosted.length ? "Chapter not found" : "No chapters hosted on MangaDex");
+      if (!(readingNow === r.id + "|" + i && !rd.hidden)) { readingNow = r.id + "|" + i; await openChapter(i); }
+    } catch (err) { return toInfo("Couldn't load this chapter"); }
+  }
+  if (!stale()) syncView();
+}
+addEventListener("popstate", () => { if (!active.url) applyRoute(); });
+
 
 // ---------- browser features: history, address-bar suggestions, tab menu, find, zoom, shield, session ----------
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
@@ -704,11 +823,18 @@ function pushRecent(kind, entry) {
   l.unshift(entry); l.length = Math.min(l.length, 12); db.set("recent:" + kind, l);
   if (discKey.startsWith(kind + "|")) discKey = "";
 }
+const rxBtn = (id) => `<button type="button" class="rx" data-rx="${esc(String(id))}" title="Remove from this list" aria-label="Remove from this list">${ic("close")}</button>`;
+function removeRecent(btn) {
+  const kind = active.page, card = btn.closest(".mcard"), grid = card.parentNode;
+  db.set("recent:" + kind, db.get("recent:" + kind, []).filter((x) => String(x.id) !== btn.dataset.rx));
+  card.remove();
+  if (!grid.querySelector(".mcard")) { grid.previousElementSibling?.remove(); grid.remove(); } // last one: drop the whole row + heading
+}
 function recentHtml(kind) {
   const l = db.get("recent:" + kind, []); if (!l.length) return "";
   const cards = l.map((x) => {
-    if (kind === "manga") { if (!x.m) return ""; mItems.set(x.m.id, x.m); return `<div class="mcard glow" data-id="${esc(x.m.id)}"><img loading="lazy" alt="" src="${mCover(x.m)}"><b>${esc(mTitle(x.m))}</b><small>${esc(x.label)}</small></div>`; }
-    return `<div class="mcard glow" data-id="${x.id}"><img loading="lazy" alt="" src="${img(x.cover)}"><b>${esc(x.title)}</b><small>${esc(x.label)}</small></div>`;
+    if (kind === "manga") { if (!x.m) return ""; mItems.set(x.m.id, x.m); return `<div class="mcard glow" data-id="${esc(x.m.id)}">${rxBtn(x.m.id)}<img loading="lazy" alt="" src="${mCover(x.m)}"><b>${esc(mTitle(x.m))}</b><small>${esc(x.label)}</small></div>`; }
+    return `<div class="mcard glow" data-id="${x.id}">${rxBtn(x.id)}<img loading="lazy" alt="" src="${img(x.cover)}"><b>${esc(x.title)}</b><small>${esc(x.label)}</small></div>`;
   }).join("");
   return `<h3>${kind === "anime" ? "Continue watching" : "Continue reading"}</h3><div class="grid">${cards}</div>`;
 }
@@ -905,4 +1031,4 @@ navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (
 applyTheme();
 if (matchMedia("(max-width:720px)").matches) el.app.classList.add("collapsed");
 newTab();
-boot().then(restoreSession).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });
+boot().then(restoreSession).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });
