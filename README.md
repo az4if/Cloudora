@@ -19,7 +19,7 @@ A self-hosted browser in your browser. Pages are fetched by your server and rend
 - **Anime:** browse and search AniList, with a built-in embed player (batched episodes, server list)
 - **Manga:** opens [atsu.moe](https://atsu.moe/) in a tab
 - **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
-- **Themes:** auto / light / dark, accent presets or any custom colour
+- **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar (phones get a bottom toolbar by default)
 - **Installable:** works as a PWA, and the app shell opens offline
 
 ## Quick start

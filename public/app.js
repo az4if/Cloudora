@@ -38,7 +38,7 @@ const el = { app: $("#app"), tabs: $("#tablist"), views: $("#views"), home: $("#
 let routing = false, tabs = [], active = null, scramjet = null, ready = false, nextId = 1, dragTab = null;
 const closed = []; // recently closed tabs, for Reopen closed tab
 let engine = db.get("engine", "DuckDuckGo");
-const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, impersonate: true, theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
+const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: true, glow: true, impersonate: true, toolbar: "auto", addrbar: "auto", theme: { mode: "dark", palette: "midnight", h: 222, s: 100 } }, db.get("prefs", {}));
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
@@ -211,7 +211,7 @@ function shortcuts() { // the editable list on the home page; first run seeds it
 }
 function renderTiles() {
   const l = shortcuts();
-  el.tiles.innerHTML = l.map((b, i) => `<div class="tile" draggable="true" tabindex="0" data-i="${i}" data-u="${esc(b.url)}"><div class="tb"><button type="button" class="rm" data-act="edit" title="Edit" aria-label="Edit ${esc(b.title)}">${ic("edit")}</button><button type="button" class="rm" data-act="del" title="Remove" aria-label="Remove ${esc(b.title)}">${ic("close")}</button></div>${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("")
+  el.tiles.innerHTML = l.map((b, i) => `<div class="tile" draggable="true" tabindex="0" data-i="${i}" data-u="${esc(b.url)}"><div class="tb"><button type="button" class="rm" data-act="menu" title="More" aria-label="More options for ${esc(b.title)}" aria-haspopup="menu">${ic("dots")}</button></div>${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("")
     + (l.length < MAX_SC ? `<button type="button" class="tile add" data-act="add" title="Add shortcut">${ic("plus")}<span>Add</span></button>` : "");
 }
 let scEdit = -1;
@@ -241,9 +241,11 @@ el.tiles.addEventListener("click", (e) => {
   if (act) {
     e.stopPropagation();
     if (act.dataset.act === "add") return openShortcut(-1);
-    const i = +act.closest(".tile").dataset.i;
-    if (act.dataset.act === "edit") return openShortcut(i);
-    const l = shortcuts(); l.splice(i, 1); db.set("shortcuts", l); renderTiles(); drawSettings(); return toast("Shortcut removed");
+    const i = +act.closest(".tile").dataset.i, r = act.getBoundingClientRect();
+    return showMenu(r.right - 170, r.bottom + 6, [
+      { label: "Edit…", fn: () => openShortcut(i) },
+      { label: "Remove", fn: () => { const l = shortcuts(); l.splice(i, 1); db.set("shortcuts", l); renderTiles(); drawSettings(); toast("Shortcut removed"); } },
+    ]);
   }
   if (t && t.dataset.u) go(active, t.dataset.u);
 });
@@ -292,6 +294,27 @@ const OFFLINE_MSG = "You're offline. Your shortcuts and settings still work, but
 function netState() { if (!navigator.onLine) showNotice(OFFLINE_MSG); else if (el.notice.textContent === OFFLINE_MSG) el.notice.hidden = true; }
 addEventListener("online", netState); addEventListener("offline", netState); netState();
 
+// ---------- layout: toolbar position (top/bottom) and address bar visibility; "auto" = bottom bar, no address bar on phones ----------
+const phoneMQ = matchMedia("(max-width:720px)");
+const LAYOUT = { toolbar: ["auto", "top", "bottom"], addrbar: ["auto", "show", "hide"] };
+function applyLayout() {
+  const phone = phoneMQ.matches;
+  if (!LAYOUT.toolbar.includes(prefs.toolbar)) prefs.toolbar = "auto";
+  if (!LAYOUT.addrbar.includes(prefs.addrbar)) prefs.addrbar = "auto";
+  el.app.dataset.bar = prefs.toolbar === "auto" ? (phone ? "bottom" : "top") : prefs.toolbar;
+  el.app.dataset.addr = prefs.addrbar === "auto" ? (phone ? "hide" : "show") : prefs.addrbar;
+}
+const barBottom = () => el.app.dataset.bar === "bottom";
+phoneMQ.addEventListener("change", applyLayout);
+applyLayout();
+// with the address bar hidden, Alt+L / the menu show it for one entry (the other toolbar buttons step aside)
+function openAddress() {
+  if (el.app.dataset.addr === "hide") {
+    el.app.classList.add("addr-tmp"); el.app.dataset.addr = "show";
+    el.addr.addEventListener("blur", () => { el.app.classList.remove("addr-tmp"); applyLayout(); }, { once: true });
+  }
+  el.addr.focus();
+}
 function showNotice(msg) { el.notice.textContent = msg; el.notice.hidden = false; }
 
 $("#bar").addEventListener("submit", (e) => { e.preventDefault(); const u = sgSel >= 0 && sg[sgSel] ? sg[sgSel].url : toUrl(el.addr.value); hideSugg(); if (u) go(active, u); el.addr.blur(); });
@@ -313,7 +336,7 @@ el.star.onclick = toggleBookmark;
 function onKey(e) {
   if (e.altKey && !e.ctrlKey && !e.metaKey) {
     const c = e.code, num = /^Digit([1-9])$/.exec(c);
-    const act = e.shiftKey && c === "KeyT" ? reopenTab : c === "KeyT" ? () => newTab() : c === "KeyW" ? () => closeTab(active) : c === "KeyL" ? () => el.addr.focus()
+    const act = e.shiftKey && c === "KeyT" ? reopenTab : c === "KeyT" ? () => newTab() : c === "KeyW" ? () => closeTab(active) : c === "KeyL" ? openAddress
       : c === "KeyF" ? openFind : c === "KeyH" ? () => openPage("history") : c === "KeyD" ? toggleBookmark : c === "KeyR" ? () => $("#reload").click()
       : c === "ArrowLeft" ? () => active.frame?.back() : c === "ArrowRight" ? () => active.frame?.forward()
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
@@ -373,6 +396,7 @@ function drawSettings() {
   $("#themes").innerHTML = sw.map(([n, c, on]) => `<button type="button" class="sw${on ? " on" : ""}" data-t="${n}" title="${n[0].toUpperCase() + n.slice(1)}" aria-label="${n}" aria-pressed="${on}" style="background:${c}">${on ? ic("check") : ""}</button>`).join("");
   drawWheel();
   document.querySelectorAll(".switch[data-k]").forEach((b) => { b.classList.toggle("on", prefs[b.dataset.k]); b.setAttribute("aria-checked", prefs[b.dataset.k]); });
+  document.querySelectorAll(".seg[data-k]").forEach((g) => g.querySelectorAll("button").forEach((b) => { const on = prefs[g.dataset.k] === b.dataset.v; b.classList.toggle("on", on); b.setAttribute("aria-checked", on); }));
   $("#allowbox").hidden = !prefs.allow.length;
   $("#allowlist").innerHTML = prefs.allow.map((h, i) => `<button class="chip" data-al="${i}" title="Resume blocking on this site">${esc(h)} ✕</button>`).join("");
   if (filterInfo) $("#filter-info").textContent = filterInfo;
@@ -416,6 +440,10 @@ function armed(btn, label, action) {
     btn._t = setTimeout(() => { btn.classList.remove("arm"); btn.textContent = label; }, 3000);
   };
 }
+document.querySelectorAll(".seg[data-k]").forEach((g) => g.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-v]"); if (!b) return;
+  prefs[g.dataset.k] = b.dataset.v; savePrefs(); applyLayout(); drawSettings();
+}));
 armed($("#clear-hist"), "Clear", () => { db.set("history", []); refreshDiscover("history", true); drawSettings(); toast("History cleared"); });
 armed($("#reset-sc"), "Reset", () => { db.set("shortcuts", DEFAULT_TILES.map((x) => ({ ...x }))); render(); drawSettings(); toast("Shortcuts reset"); });
 armed($("#clear-bm"), "Clear", () => { db.set("bookmarks", []); render(); drawSettings(); toast("Bookmarks cleared"); });
@@ -991,7 +1019,7 @@ function restoreSession() {
 }
 
 // Menus (tab right-click, ⋯ button)
-function showMenu(x, y, items) {
+function showMenu(x, y, items, above = false) {
   const c = $("#ctx"), m = document.createElement("div"); m.className = "menu"; c.innerHTML = "";
   for (const it of items) {
     if (it === "-") { m.insertAdjacentHTML("beforeend", '<div class="msep"></div>'); continue; }
@@ -1001,7 +1029,7 @@ function showMenu(x, y, items) {
   }
   c.appendChild(m); c.hidden = false;
   const r = m.getBoundingClientRect();
-  m.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px"; m.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+  m.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px"; m.style.top = Math.max(8, Math.min(above ? y - r.height : y, innerHeight - r.height - 8)) + "px";
 }
 function closeFloating() { $("#ctx").hidden = true; $("#shield-pop").hidden = true; hideSugg(); }
 $("#ctx").addEventListener("pointerdown", (e) => { if (e.target.id === "ctx") closeFloating(); });
@@ -1021,7 +1049,8 @@ function tabMenu(x, y, tab) {
 }
 $("#menu-btn").onclick = (e) => {
   const r = e.currentTarget.getBoundingClientRect();
-  showMenu(r.right - 230, r.bottom + 6, [
+  showMenu(r.right - 230, barBottom() ? r.top - 6 : r.bottom + 6, [
+    ...(el.app.dataset.addr === "hide" ? [{ label: "Go to address…", key: "Alt+L", fn: openAddress }] : []),
     { label: "New tab", key: "Alt+T", fn: () => newTab() },
     { label: "Reopen closed tab", key: "Alt+Shift+T", off: !closed.length, fn: reopenTab },
     "-",
@@ -1032,7 +1061,7 @@ $("#menu-btn").onclick = (e) => {
     "-",
     { label: "History", key: "Alt+H", fn: () => openPage("history") },
     { label: "Settings", fn: () => $("#open-settings").click() },
-  ]);
+  ], barBottom());
 };
 
 // Find in page + zoom (proxied pages share our origin, so we can reach into the frame)
@@ -1132,7 +1161,7 @@ $("#shield").onclick = (e) => {
   if (!pop.hidden) return (pop.hidden = true);
   closeFloating(); pop.hidden = false; drawShieldPop();
   const r = e.currentTarget.getBoundingClientRect(), w = pop.getBoundingClientRect().width;
-  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px"; pop.style.top = r.bottom + 8 + "px";
+  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px"; pop.style.top = (barBottom() ? Math.max(8, r.top - 8 - pop.getBoundingClientRect().height) : r.bottom + 8) + "px";
 };
 $("#shield-pop").addEventListener("click", (e) => {
   if (!e.target.closest("#sp-toggle") || !active.url) return;

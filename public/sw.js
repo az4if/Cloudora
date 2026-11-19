@@ -128,15 +128,19 @@ function injectHead(res, payload) {
   return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 const POPUP_GUARD = "(function(){var o=window.open;window.open=function(){try{if(navigator.userActivation&&!navigator.userActivation.isActive)return null}catch(e){}return o.apply(this,arguments)}})();";
-async function decorate(res, pageUrl) {
+// proxied pages: thin scrollbars (no up/down arrow buttons); :where() keeps it weaker than any rule the site sets itself
+const SCROLL_TAG = '<style id="cloudora-scroll">:where(*){scrollbar-width:thin}::-webkit-scrollbar-button{display:none;width:0;height:0}</style>';
+const SCROLL_CSS = enc.encode(SCROLL_TAG);
+async function decorate(res, pageUrl, scrollOnly = false) {
   const host = hostOf(pageUrl);
-  if (!host || allowed(host) || res.status !== 200 || !res.body || !/text\/html/i.test(res.headers.get("content-type") || "")) return res;
+  if (!host || res.status !== 200 || !res.body || !/text\/html/i.test(res.headers.get("content-type") || "")) return res;
+  if (scrollOnly || allowed(host)) return injectHead(res, SCROLL_CSS);
   await cosReady();
   let css = "", calls = [];
   if (cos) ({ css, calls } = cos.forHost(host));
   let js = POPUP_GUARD;
   if (calls.length && runtimeSrc) js += "try{" + runtimeSrc + "(" + JSON.stringify(calls).replace(/</g, "\\u003c") + ")}catch(e){}";
-  const html = '<link rel="stylesheet" href="' + self.location.origin + '/adblock/generic.css">' +
+  const html = SCROLL_TAG + '<link rel="stylesheet" href="' + self.location.origin + '/adblock/generic.css">' +
     (css ? '<style id="cloudora-cosmetic">' + css.replace(/<\//g, "<\\/") + "</style>" : "") +
     '<script id="cloudora-scriptlets">' + js.replace(/<\/script/gi, "<\\/script") + "</script>";
   return injectHead(res, enc.encode(html));
@@ -156,7 +160,11 @@ async function handle(event) {
   }
   await ready;
   const req = event.request;
-  if (!adblock) return scramjet.fetch(event);
+  if (!adblock) {
+    const out = await scramjet.fetch(event);
+    if (req.mode === "navigate" || req.destination === "document" || req.destination === "iframe" || req.destination === "frame") { try { return await decorate(out, real(req.url), true); } catch {} }
+    return out;
+  }
   await netReady;
   const target = real(req.url);
   const { nested, doc } = await ctx(event);
