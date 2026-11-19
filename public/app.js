@@ -41,6 +41,8 @@ const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: 
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
+// The Manga button opens this site (through the proxy) instead of the built-in MangaDex browser
+const MANGA_URL = "https://atsu.moe/";
 const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga", history: "History" };
 const AD_CSS = 'ins.adsbygoogle,.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.ad-slot,.ad-wrapper,.advertisement,.sponsored-ad,.taboola,[id^="taboola"],[class*="outbrain"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adnxs"],iframe[src*="adsystem"],#ad,#ads,.ads{display:none!important}';
 const rawHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
@@ -99,6 +101,7 @@ async function applyTransport() {
 }
 
 function newTab(url, page = "home") {
+  if (page === "manga") { page = "home"; url = url || MANGA_URL; } // old saved tabs / links to the manga page
   const tab = { id: nextId++, url: "", page, title: PAGE_TITLES[page], frame: null, loading: false, pinned: false, zoom: 1, blocked: 0, hits: [], row: document.createElement("div") };
   tab.row.className = "tab";
   tab.row.draggable = true;
@@ -731,6 +734,10 @@ el.disc.addEventListener("click", (e) => {
   nav(`${active.page}/info/${encodeURIComponent(c.dataset.id)}`);
 });
 function openPage(p) {
+  if (p === "manga") { // straight to the manga site: reuse this tab if it is a blank page, else open a new one
+    if (!active.url) { active.page = "home"; active.title = "New tab"; go(active, MANGA_URL); } else newTab(MANGA_URL);
+    return;
+  }
   if (!active.url) { active.page = p; active.title = PAGE_TITLES[p]; }
   else newTab(null, p);
   nav(p);
@@ -784,6 +791,7 @@ function syncView() {
 let playing = null, readingNow = null, routeSeq = 0;
 async function applyRoute(initial = false) {
   const r = parseHash(); if (!r || !active) return;
+  if (r.page === "manga") { history.replaceState({ i: (history.state && history.state.i) || 0 }, "", "#home"); return openPage("manga"); }
   if (active.url) { if (!initial) return; newTab(null, r.page); }
   else if (active.page !== r.page) { active.page = r.page; active.title = PAGE_TITLES[r.page]; }
   const seq = ++routeSeq;

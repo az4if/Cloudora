@@ -19,7 +19,7 @@ by **your server**, not your device, and rendered with Scramjet.
   zoom (Alt +/-/0), Alt+1..9 to switch tabs, Alt+D bookmark, tab right-click menu. Shortcuts also work while a
   page has focus.
 - **Anime:** trending, popular, search and details from AniList, official "where to watch" links, and a **built-in player** (HLS/MP4, subtitles, speed, resume, auto-next) when you configure a source API (below)
-- **Manga:** browse, search and read in the app using the public MangaDex API. Community translations are labeled **Unofficial**; publisher links and official chapters are labeled **Official**
+- **Manga:** the Manga button opens https://atsu.moe/ in a proxied tab (the built-in MangaDex reader below is still in the code but no longer reachable from the UI). Original MangaDex description: browse, search and read in the app using the public MangaDex API. Community translations are labeled **Unofficial**; publisher links and official chapters are labeled **Official**
 - Wisp blocks localhost/private IPs by default, so visitors can't reach your server's network.
 - The server needs outbound access to graphql.anilist.co, api.mangadex.org and their
   image hosts. Manga page images load straight from MangaDex's servers into the visitor's browser.
@@ -141,7 +141,8 @@ The Anime and Manga pages are driven by the address bar hash, so reload, back/fo
 
     #home   #history
     #anime  #anime/search/<query>  #anime/info/<anilist id>  #anime/watch/<anilist id>/<episode>
-    #manga  #manga/search/<query>  #manga/info/<mangadex id>  #manga/read/<mangadex id>/<chapter>
+    #manga  (redirects to #home and opens atsu.moe in a tab; the older #manga/... routes below do the same)
+    #manga/search/<query>  #manga/info/<mangadex id>  #manga/read/<mangadex id>/<chapter>
 
 Opening a card or searching adds a history entry; switching episode/chapter replaces the current one, so the Back button (and Esc)
 always steps out one layer: watch/read -> list, info popup -> list. While watching or reading, the cards behind are hidden and the
