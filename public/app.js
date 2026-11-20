@@ -23,6 +23,7 @@ const ICONS = {
   plus: "M12 5v14M5 12h14", close: "M18 6L6 18M6 6l12 12", sidebar: "M3 5h18v14H3zM9 5v14",
   star: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
+  trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
@@ -243,8 +244,8 @@ el.tiles.addEventListener("click", (e) => {
     if (act.dataset.act === "add") return openShortcut(-1);
     const i = +act.closest(".tile").dataset.i, r = act.getBoundingClientRect();
     return showMenu(r.right - 170, r.bottom + 6, [
-      { label: "Edit…", fn: () => openShortcut(i) },
-      { label: "Remove", fn: () => { const l = shortcuts(); l.splice(i, 1); db.set("shortcuts", l); renderTiles(); drawSettings(); toast("Shortcut removed"); } },
+      { icon: "edit", label: "Edit…", fn: () => openShortcut(i) },
+      { icon: "trash", label: "Remove", fn: () => { const l = shortcuts(); l.splice(i, 1); db.set("shortcuts", l); renderTiles(); drawSettings(); toast("Shortcut removed"); } },
     ]);
   }
   if (t && t.dataset.u) go(active, t.dataset.u);
@@ -1024,7 +1025,7 @@ function showMenu(x, y, items, above = false) {
   for (const it of items) {
     if (it === "-") { m.insertAdjacentHTML("beforeend", '<div class="msep"></div>'); continue; }
     const b = document.createElement("button"); b.className = "mi"; b.disabled = !!it.off; b.setAttribute("role", "menuitem");
-    b.innerHTML = `<span>${esc(it.label)}</span>${it.key ? `<kbd>${esc(it.key)}</kbd>` : ""}`;
+    b.innerHTML = `${it.icon ? ic(it.icon) : ""}<span>${esc(it.label)}</span>${it.key ? `<kbd>${esc(it.key)}</kbd>` : ""}`;
     b.onclick = () => { closeFloating(); it.fn(); }; m.appendChild(b);
   }
   c.appendChild(m); c.hidden = false;

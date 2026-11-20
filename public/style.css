@@ -361,3 +361,10 @@ kbd{display:inline-block;min-width:24px;padding:2px 7px;border:1px solid var(--b
 #home::-webkit-scrollbar,.spanes::-webkit-scrollbar,#set-nav::-webkit-scrollbar{display:none;width:0;height:0}
 body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 @media (hover:none){.tile .rm{padding:6px}.tile .rm svg{width:14px;height:14px}}
+
+/* ---- 0.6.8: menu icons; info popup keeps only the synopsis scrollbar ---- */
+.mi{align-items:center}.mi svg{width:16px;height:16px;margin-right:-8px;color:var(--muted)}.mi span{flex:1}
+.mi:hover:not(:disabled) svg{color:var(--text)}
+.dcard,.dbody,.dbody .chlist{scrollbar-width:none}
+.dcard::-webkit-scrollbar,.dbody::-webkit-scrollbar,.dbody .chlist::-webkit-scrollbar{display:none;width:0;height:0}
+.dcard .desc{scrollbar-width:thin}
