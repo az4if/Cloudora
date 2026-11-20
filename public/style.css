@@ -370,3 +370,6 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 .xb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .xb.md{width:32px;height:32px;border-radius:10px}.xb.md svg{width:18px;height:18px}
 @media (hover:none){.xb:not(.md){width:28px;height:28px}}
+
+/* ---- 0.7.1: episode numbers centered in their pills ---- */
+.eps .chip,.chlist.eps .chip{display:inline-flex;align-items:center;justify-content:center;min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
