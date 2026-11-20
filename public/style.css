@@ -25,10 +25,8 @@ svg{width:18px;height:18px;flex:none}
 .tab:hover{background:var(--surface)}
 .tab.active{background:var(--surface2);border-color:var(--border);color:var(--text)}
 .tab .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tab .x{opacity:0;padding:3px;border:0;border-radius:7px;background:none;color:inherit;display:grid;place-items:center}
-.tab:hover .x,.tab.active .x{opacity:.7}
-.tab .x:hover{background:var(--border);opacity:1}
-.tab .x svg{width:14px;height:14px}
+.tab .x{opacity:0}
+.tab:hover .x,.tab.active .x,.tab .x:focus-visible{opacity:1}
 .fav{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on-accent,#0b0b0d);font-size:11px;font-weight:700;text-transform:uppercase}
 .tab.loading .fav{animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.35}}
@@ -56,10 +54,7 @@ main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;padding:10px
 .tile .fav{width:40px;height:40px;border-radius:13px;font-size:17px}
 .tile span{max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile .tb{position:absolute;top:4px;right:4px;display:none;gap:3px}
-.tile .rm{display:grid;place-items:center;padding:3px;border:0;border-radius:7px;background:var(--border);color:inherit}
-.tile .rm:hover{background:var(--accent);color:#000}
 .tile:hover .tb,.tile:focus-within .tb{display:flex}
-.tile .rm svg{width:12px;height:12px}
 .tile.drag{opacity:.4}.tile.over{border-color:var(--accent);transform:scale(1.04)}
 .tile.add{border:1px dashed var(--border);background:none;color:var(--muted);justify-content:center;min-height:98px}
 .tile.add svg{width:22px;height:22px}.tile.add:hover{color:var(--text);border-color:var(--accent)}
@@ -101,7 +96,7 @@ select{padding:9px 12px;border:1px solid var(--border);border-radius:10px;backgr
 .dx{position:absolute;top:10px;right:10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{padding:5px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);font-size:12px}
-button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
+button.chip{cursor:pointer;display:inline-flex;align-items:center;gap:6px}.chip svg{width:12px;height:12px}button.chip:hover{border-color:var(--accent)}
 .switch{flex:none;width:42px;height:24px;padding:2px;border:0;border-radius:999px;background:var(--border);transition:background .2s}
 .switch::after{content:"";display:block;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s}
 .switch.on{background:var(--accent)}.switch.on::after{transform:translateX(18px)}
@@ -177,7 +172,7 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 .hday{margin:22px 0 6px;font-size:13px;color:var(--muted)}
 .hrow{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:12px;cursor:pointer}.hrow:hover{background:var(--surface2)}
 .hrow .tx{flex:1;min-width:0}.hrow b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hrow small{color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hrow .tm{color:var(--muted);font-size:12px}.hrow .rm{display:none;padding:3px;border:0;border-radius:7px;background:var(--border)}.hrow:hover .rm{display:grid}
+.hrow .tm{color:var(--muted);font-size:12px}.hrow .rm{display:none}.hrow:hover .rm,.hrow .rm:focus-visible{display:grid}
 #allowbox small{color:var(--muted);font-size:12px}#allowbox .chips{margin-top:6px}
 
 /* ---- 0.6: loaders ---- */
@@ -246,10 +241,9 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 
 /* ---- routed views + remove button on "continue" cards ---- */
 #discover.view>header,#discover.view>#d-body{display:none}
-.rx{position:absolute;top:6px;right:6px;z-index:4;display:none;place-items:center;padding:3px;border:0;border-radius:7px;background:var(--border);color:inherit;transition:background .12s}
-.rx svg{width:12px;height:12px}.rx:hover{background:var(--accent);color:#000}
-.mcard:hover .rx,.rx:focus-visible{display:grid}
-@media (hover:none){.rx{display:grid}}
+.mcard .rx{position:absolute;top:6px;right:6px;z-index:4;display:none}
+.mcard:hover .rx,.mcard .rx:focus-visible{display:grid}
+@media (hover:none){.mcard .rx{display:grid}}
 
 /* ---- 0.6.2: settings ---- */
 #settings{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:16px;background:#000a;backdrop-filter:blur(6px);animation:fadein .15s ease-out}
@@ -265,7 +259,7 @@ button.chip{cursor:pointer}button.chip:hover{border-color:var(--accent)}
 #set-nav button[aria-selected=true]::before{content:"";position:absolute;left:-12px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
 #set-nav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .spanes{position:relative;min-width:0;overflow:auto}
-#close-settings{position:absolute;top:14px;right:14px;z-index:3;background:var(--side)}
+#close-settings{position:absolute;top:14px;right:14px;z-index:3}
 .pane{max-width:640px;padding:30px 36px 40px;animation:fadein .18s ease-out}
 .pane[hidden]{display:none}
 .pane h3{margin:0;font-size:24px;letter-spacing:-.025em}
@@ -360,7 +354,7 @@ kbd{display:inline-block;min-width:24px;padding:2px 7px;border:1px solid var(--b
 #home,.spanes,#set-nav{scrollbar-width:none}
 #home::-webkit-scrollbar,.spanes::-webkit-scrollbar,#set-nav::-webkit-scrollbar{display:none;width:0;height:0}
 body:has(#app[data-bar=bottom]) #toast{bottom:78px}
-@media (hover:none){.tile .rm{padding:6px}.tile .rm svg{width:14px;height:14px}}
+
 
 /* ---- 0.6.8: menu icons; info popup keeps only the synopsis scrollbar ---- */
 .mi{align-items:center}.mi svg{width:16px;height:16px;margin-right:-8px;color:var(--muted)}.mi span{flex:1}
@@ -368,3 +362,11 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 .dcard,.dbody,.dbody .chlist{scrollbar-width:none}
 .dcard::-webkit-scrollbar,.dbody::-webkit-scrollbar,.dbody .chlist::-webkit-scrollbar{display:none;width:0;height:0}
 .dcard .desc{scrollbar-width:thin}
+
+/* ---- 0.7.0: every close / remove / more button shares one design ---- */
+.xb{display:grid;place-items:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:8px;background:var(--border);color:var(--text);transition:background .12s,color .12s}
+.xb svg{width:14px;height:14px}
+.xb:hover,.xb:focus-visible{background:var(--accent);color:var(--on-accent,#0b0b0d)}
+.xb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.xb.md{width:32px;height:32px;border-radius:10px}.xb.md svg{width:18px;height:18px}
+@media (hover:none){.xb:not(.md){width:28px;height:28px}}

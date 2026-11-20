@@ -183,7 +183,7 @@ function setPinned(tab, on) {
 function render() {
   for (const t of tabs) {
     t.row.className = "tab" + (t === active ? " active" : "") + (t.loading ? " loading" : "") + (t.pinned ? " pinned" : "");
-    t.row.innerHTML = `${fav(t.url || (t.page !== "home" ? t.page : ""))}<span class="t">${esc(t.title)}</span><span class="pn">${ic("pin")}</span><button class="x" title="Close">${ic("close")}</button>`;
+    t.row.innerHTML = `${fav(t.url || (t.page !== "home" ? t.page : ""))}<span class="t">${esc(t.title)}</span><span class="pn">${ic("pin")}</span><button class="x xb" title="Close" aria-label="Close tab">${ic("close")}</button>`;
     t.row.querySelector(".x").onclick = (e) => { e.stopPropagation(); closeTab(t); };
     if (t.frame) t.frame.frame.classList.toggle("active", t === active);
   }
@@ -212,7 +212,7 @@ function shortcuts() { // the editable list on the home page; first run seeds it
 }
 function renderTiles() {
   const l = shortcuts();
-  el.tiles.innerHTML = l.map((b, i) => `<div class="tile" draggable="true" tabindex="0" data-i="${i}" data-u="${esc(b.url)}"><div class="tb"><button type="button" class="rm" data-act="menu" title="More" aria-label="More options for ${esc(b.title)}" aria-haspopup="menu">${ic("dots")}</button></div>${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("")
+  el.tiles.innerHTML = l.map((b, i) => `<div class="tile" draggable="true" tabindex="0" data-i="${i}" data-u="${esc(b.url)}"><div class="tb"><button type="button" class="rm xb" data-act="menu" title="More" aria-label="More options for ${esc(b.title)}" aria-haspopup="menu">${ic("dots")}</button></div>${fav(b.url)}<span>${esc(b.title)}</span></div>`).join("")
     + (l.length < MAX_SC ? `<button type="button" class="tile add" data-act="add" title="Add shortcut">${ic("plus")}<span>Add</span></button>` : "");
 }
 let scEdit = -1;
@@ -399,7 +399,7 @@ function drawSettings() {
   document.querySelectorAll(".switch[data-k]").forEach((b) => { b.classList.toggle("on", prefs[b.dataset.k]); b.setAttribute("aria-checked", prefs[b.dataset.k]); });
   document.querySelectorAll(".seg[data-k]").forEach((g) => g.querySelectorAll("button").forEach((b) => { const on = prefs[g.dataset.k] === b.dataset.v; b.classList.toggle("on", on); b.setAttribute("aria-checked", on); }));
   $("#allowbox").hidden = !prefs.allow.length;
-  $("#allowlist").innerHTML = prefs.allow.map((h, i) => `<button class="chip" data-al="${i}" title="Resume blocking on this site">${esc(h)} ✕</button>`).join("");
+  $("#allowlist").innerHTML = prefs.allow.map((h, i) => `<button class="chip" data-al="${i}" title="Resume blocking on this site">${esc(h)}${ic("close")}</button>`).join("");
   if (filterInfo) $("#filter-info").textContent = filterInfo;
   $("#engine-l").textContent = engine;
   const nh = histList().length, nb = bookmarks().length;
@@ -541,7 +541,7 @@ const mItems = new Map();
 const mTitle = (m) => m.attributes.title.en || Object.values(m.attributes.title)[0] || "Untitled";
 const mCover = (m) => { const c = m.relationships.find((r) => r.type === "cover_art"); return c && c.attributes ? img(`https://uploads.mangadex.org/covers/${m.id}/${c.attributes.fileName}.256.jpg`) : ""; };
 const mcard = (m) => { mItems.set(m.id, m); return `<div class="mcard glow" data-id="${m.id}"><img loading="lazy" alt="" src="${mCover(m)}"><b>${esc(mTitle(m))}</b><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small></div>`; };
-const closeBtn = () => `<button class="ghost dx">${ic("close")}</button>`;
+const closeBtn = () => `<button type="button" class="xb md dx" title="Close" aria-label="Close">${ic("close")}</button>`;
 const chLabel = (c) => "Ch. " + (c.attributes.chapter || "?") + (c.attributes.title ? " – " + c.attributes.title : "");
 let reading = null;
 const badge = (official) => official ? '<span class="badge ok">Official</span>' : '<span class="badge warn">Unofficial</span>';
@@ -971,7 +971,7 @@ loaders.history = async (q, key) => {
   for (const h of list.slice(0, 400)) {
     const d = dayLabel(h.t);
     if (d !== day) { day = d; html += `<div class="hday">${esc(d)}</div>`; }
-    html += `<div class="hrow" data-goto="${esc(h.url)}">${fav(h.url)}<div class="tx"><b>${esc(h.title)}</b><small>${esc(h.url)}</small></div><span class="tm">${new Date(h.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><button class="rm" data-hdel="${h.t}" title="Remove">${ic("close")}</button></div>`;
+    html += `<div class="hrow" data-goto="${esc(h.url)}">${fav(h.url)}<div class="tx"><b>${esc(h.title)}</b><small>${esc(h.url)}</small></div><span class="tm">${new Date(h.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><button class="rm xb" data-hdel="${h.t}" title="Remove" aria-label="Remove from history">${ic("close")}</button></div>`;
   }
   $("#d-body").innerHTML = html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : "");
 };
@@ -982,7 +982,7 @@ function pushRecent(kind, entry) {
   l.unshift(entry); l.length = Math.min(l.length, 12); db.set("recent:" + kind, l);
   if (discKey.startsWith(kind + "|")) discKey = "";
 }
-const rxBtn = (id) => `<button type="button" class="rx" data-rx="${esc(String(id))}" title="Remove from this list" aria-label="Remove from this list">${ic("close")}</button>`;
+const rxBtn = (id) => `<button type="button" class="rx xb" data-rx="${esc(String(id))}" title="Remove from this list" aria-label="Remove from this list">${ic("close")}</button>`;
 function removeRecent(btn) {
   const kind = active.page, card = btn.closest(".mcard"), grid = card.parentNode;
   db.set("recent:" + kind, db.get("recent:" + kind, []).filter((x) => String(x.id) !== btn.dataset.rx));
