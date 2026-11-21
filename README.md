@@ -16,7 +16,7 @@ A self-hosted browser in your browser. Pages are fetched by your server and rend
 
 - **Browser:** tabs, bookmarks, history, find in page, address-bar suggestions, keyboard shortcuts, editable home shortcuts
 - **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists, with a per-site pause
-- **Plugins:** optional add-ons each user installs in their own browser (anime, manga, your own). See [PLUGINS.md](PLUGINS.md)
+- **Plugins:** optional add-ons each user installs in their own browser (your own or from others). See [PLUGINS.md](PLUGINS.md)
 - **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
 - **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar (phones get a bottom toolbar by default)
 - **Installable:** works as a PWA, and the app shell opens offline
@@ -54,7 +54,7 @@ Copy `.env.example` to `.env` and edit it, or set the variables in your host's d
 
 ## Plugins
 
-Cloudora ships with no anime, manga or stream servers. Add what you want under **Settings → Plugins** (file, address or pasted code); it stays in that browser, can be switched off or removed any time, and `?noplugins` starts with all of them off.
+Cloudora's core is just the browser. Add extra pages and features under **Settings → Plugins** (file, address or pasted code); it stays in that browser, can be switched off or removed any time, and `?noplugins` starts with all of them off.
 Plugins run with full access to the app, so only install ones you trust. To write your own, see [PLUGINS.md](PLUGINS.md).
 
 ## How it works

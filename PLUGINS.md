@@ -1,6 +1,6 @@
 # Plugins
 
-Cloudora's core is just the browser. Everything else (the Anime page, the Manga button, anything you write) is a **plugin**: one JavaScript file that each user adds in their own browser under **Settings → Plugins**. Plugins are stored in that browser (IndexedDB), never on the server, and can be turned off, updated or removed at any time without a reload.
+Cloudora's core is just the browser. Everything else (extra pages, sidebar buttons, anything you write) is a **plugin**: one JavaScript file that each user adds in their own browser under **Settings → Plugins**. Plugins are stored in that browser (IndexedDB), never on the server, and can be turned off, updated or removed at any time without a reload.
 
 > A plugin runs with full access to Cloudora (your history, bookmarks, settings, and requests through your server). Only install plugins from sources you trust. If one breaks the app, open Cloudora with `?noplugins` (for example `https://your-host/?noplugins`) to start with all plugins off, then remove it.
 
@@ -73,18 +73,18 @@ Size limit 1.5 MB. The file is an ES module; `export default function (api) {}` 
 
 ```js
 api.page({
-  id: "anime",             // route: #anime
-  title: "Anime",          // sidebar label
+  id: "notes",             // route: #notes
+  title: "Notes",          // sidebar label
   placeholder: "Search…",  // search box text
   search: true,            // false hides the search box
   nav: true,               // false hides the sidebar button
   list(q, ctx) {},         // draw the page. ctx = { q, body, current(), render(html) }
-  route(parts, ctx) {},    // optional: handles #anime/<parts…>; return false to fall back to list()
+  route(parts, ctx) {},    // optional: handles #notes/<parts…>; return false to fall back to list()
   leave() {},              // optional: called when the user leaves the page
 });
 
 // or a link-style page: a sidebar button that just does something
-api.page({ id: "manga", title: "Manga", action: () => api.open("https://example.com/") });
+api.page({ id: "docs", title: "Docs", action: () => api.open("https://example.com/") });
 ```
 
 Routes: `#<page>`, `#<page>/search/<query>` (calls `list(query)`), and anything else is passed to `route(parts, ctx)` with `ctx = { stale(), nav, replace, toast, syncView }`. Use `ctx.stale()` after any `await` to see if the user has already moved on. Cards with class `mcard` and `data-id` call `open(id)` if you define it, otherwise navigate to `#<page>/info/<id>`.

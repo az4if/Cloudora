@@ -190,7 +190,7 @@ button.chip{cursor:pointer;display:inline-flex;align-items:center;gap:6px}.chip 
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:1.8s}.sk-img,.sk-l,.mcard img:not(.ok){animation:none}.mcard img.ok{animation:none}}
 
-/* ---- 0.6: episode batches + styled dropdown ---- */
+/* ---- 0.6: styled dropdown ---- */
 .dd-btn{display:inline-flex;align-items:center;gap:8px;padding:7px 10px 7px 13px;border:1px solid var(--border);border-radius:11px;background:var(--surface2);font-weight:500;transition:border-color .15s}
 .dd-btn:hover,.dd-btn.open{border-color:var(--accent)}
 .dd-btn svg{width:16px;height:16px;color:var(--muted);transition:transform .15s}.dd-btn.open svg{transform:rotate(180deg)}
@@ -334,8 +334,6 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 .xb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .xb.md{width:32px;height:32px;border-radius:10px}.xb.md svg{width:18px;height:18px}
 @media (hover:none){.xb:not(.md){width:28px;height:28px}}
-
-/* ---- 0.7.1: episode numbers centered in their pills ---- */
 
 /* ---- 0.8: plugins ---- */
 #d-form[hidden]{display:none}
