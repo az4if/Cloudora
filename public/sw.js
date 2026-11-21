@@ -33,7 +33,7 @@ const cosReady = () => cosP || (cosP = (async () => {
 })());
 // ---------- PWA: the app shell is cached so Cloudora opens offline (sites themselves still need the network) ----------
 const SHELL_CACHE = "cloudora-shell";
-const SHELL = ["/", "/style.css", "/app.js", "/provider.js", "/transport-impersonate.mjs", "/site.webmanifest",
+const SHELL = ["/", "/style.css", "/app.js", "/plugins.js", "/transport-impersonate.mjs", "/site.webmanifest",
   "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png",
   "/logo-white.png", "/logo-black.png", "/favicon-black.ico", "/favicon-white.ico", "/favicon-black-32.png", "/favicon-white-32.png"];
 const precache = () => caches.open(SHELL_CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => {})))).catch(() => {});

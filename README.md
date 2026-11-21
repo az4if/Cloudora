@@ -16,8 +16,7 @@ A self-hosted browser in your browser. Pages are fetched by your server and rend
 
 - **Browser:** tabs, bookmarks, history, find in page, address-bar suggestions, keyboard shortcuts, editable home shortcuts
 - **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists, with a per-site pause
-- **Anime:** browse and search AniList, with a built-in embed player (batched episodes, server list)
-- **Manga:** opens [atsu.moe](https://atsu.moe/) in a tab
+- **Plugins:** optional add-ons each user installs in their own browser (anime, manga, your own). See [PLUGINS.md](PLUGINS.md)
 - **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
 - **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar (phones get a bottom toolbar by default)
 - **Installable:** works as a PWA, and the app shell opens offline
@@ -43,34 +42,20 @@ the proxy as a bot. Without them Cloudora quietly falls back to libcurl.js.
 
 ## Configuration
 
+Copy `.env.example` to `.env` and edit it, or set the variables in your host's dashboard. Real environment variables win over `.env`.
+
 | Variable | Purpose |
 | --- | --- |
 | `PORT` | Port to listen on (default `8080`) |
-| `STREAM_API`, `STREAM_API_KEY` | Add a direct HLS/MP4 source API you are licensed to use |
 | `CLOUDORA_IMPERSONATE=0` | Turn off real-browser fetching |
 | `CURL_CFFI=0` | Never use `curl_cffi` for upstream API requests |
 | `UPSTREAM_UA` | Override the user agent for server-side requests |
 | `CLOUDORA_ALLOW_LOCAL=1` | Let the tunnel reach localhost/LAN. **Local testing only, never on a public server** |
 
-<details>
-<summary>Source API format</summary>
+## Plugins
 
-Cloudora calls `GET {STREAM_API}/sources?anilist_id=<id>&episode=<n>` and expects:
-
-```json
-{
-  "sources": [
-    { "url": "https://.../master.m3u8", "type": "hls", "label": "1080p" },
-    { "url": "https://.../ep1.mp4", "type": "mp4", "label": "720p" }
-  ],
-  "subtitles": [{ "url": "https://.../en.vtt", "lang": "en", "label": "English" }]
-}
-```
-
-Add `"official": true` to a source for an **Official** badge, or set `STREAM_API_OFFICIAL=1` for the whole API.
-Video and subtitle hosts must allow cross-site playback (CORS).
-
-</details>
+Cloudora ships with no anime, manga or stream servers. Add what you want under **Settings → Plugins** (file, address or pasted code); it stays in that browser, can be switched off or removed any time, and `?noplugins` starts with all of them off.
+Plugins run with full access to the app, so only install ones you trust. To write your own, see [PLUGINS.md](PLUGINS.md).
 
 ## How it works
 
@@ -83,7 +68,8 @@ browser ── service worker (Scramjet) ── bare-mux ──┬─ libcurl.js
 | --- | --- |
 | `src/index.js` | Server: static files, Wisp tunnel, API routes |
 | `public/sw.js` | Service worker: proxying, ad blocking, offline shell |
-| `public/app.js` | Browser UI |
+| `public/app.js` | Browser UI and plugin host |
+| `public/plugins.js` | Plugin manifest parser and storage |
 
 ## Development
 
@@ -94,5 +80,5 @@ npm run build-filters    # rebuild the ad-block lists from adblock-src/
 
 ## Credits
 
-Built on Scramjet, bare-mux, libcurl.js, wisp-js and hls.js by Mercury Workshop and others. Anime data from AniList.
+Built on Scramjet, bare-mux, libcurl.js, wisp-js and hls.js by Mercury Workshop and others.
 Filter lists are © their authors (GPLv3 / CC BY-SA).

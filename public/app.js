@@ -24,6 +24,7 @@ const ICONS = {
   star: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
   trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
+  puzzle: "M19.4 7.9c-.05.3.06.65.29.88l1.57 1.57a2.4 2.4 0 0 1 0 3.4l-1.6 1.6a1 1 0 0 1-.84.28c-.47-.07-.8-.48-.97-.93a2.5 2.5 0 1 0-3.21 3.21c.45.17.86.5.93.97a1 1 0 0 1-.28.84l-1.6 1.6a2.4 2.4 0 0 1-3.4 0l-1.57-1.57a1 1 0 0 0-.88-.29c-.49.07-.84.5-1.02.97a2.5 2.5 0 1 1-3.24-3.24c.46-.18.9-.53.97-1.02a1 1 0 0 0-.29-.88L2 13.4a2.4 2.4 0 0 1 0-3.4l1.53-1.53c.24-.24.58-.35.92-.3.51.08.88.53 1.07 1.01a2.5 2.5 0 1 0 3.26-3.26c-.48-.2-.93-.56-1.01-1.07-.05-.34.06-.68.3-.92L9.6 2.4a2.4 2.4 0 0 1 3.4 0l1.57 1.57c.23.23.56.34.88.29.49-.07.84-.5 1.02-.97a2.5 2.5 0 1 1 3.24 3.24c-.46.18-.9.53-.97 1.02z",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
@@ -43,9 +44,7 @@ const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: 
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
-// The Manga button opens this site (through the proxy) instead of the built-in MangaDex browser
-const MANGA_URL = "https://atsu.moe/";
-const PAGE_TITLES = { home: "New tab", anime: "Anime", manga: "Manga", history: "History" };
+const PAGE_TITLES = { home: "New tab", history: "History" }; // plugins add their own pages (see the plugin runtime below)
 const AD_CSS = 'ins.adsbygoogle,.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.ad-slot,.ad-wrapper,.advertisement,.sponsored-ad,.taboola,[id^="taboola"],[class*="outbrain"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adnxs"],iframe[src*="adsystem"],#ad,#ads,.ads{display:none!important}';
 const rawHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
 const paused = (u) => { const h = rawHost(u); return !!h && prefs.allow.some((d) => h === d || h.endsWith("." + d)); };
@@ -84,9 +83,9 @@ async function boot() {
   await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   bareConn = new BareMux.BareMuxConnection("/baremux/worker.js");
-  try { const cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); serverImpersonate = !!cfg.impersonate; if (cfg.version) $("#ver").textContent = "Version " + cfg.version; } catch {}
+  try { const cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); serverImpersonate = !!cfg.impersonate; if (cfg.version) { $("#ver").textContent = "Version " + cfg.version; coreVer = cfg.version; } } catch {}
   await applyTransport();
-  ready = true;
+  ready = true; netGate.res();
   syncAdblock();
 }
 // HTTP goes through the server's curl_cffi fetcher (real Chrome/Firefox/Safari TLS fingerprint) when the server has it and the
@@ -103,7 +102,6 @@ async function applyTransport() {
 }
 
 function newTab(url, page = "home") {
-  if (page === "manga") { page = "home"; url = url || MANGA_URL; } // old saved tabs / links to the manga page
   const tab = { id: nextId++, url: "", page, title: PAGE_TITLES[page], frame: null, loading: false, pinned: false, zoom: 1, blocked: 0, hits: [], row: document.createElement("div") };
   tab.row.className = "tab";
   tab.row.draggable = true;
@@ -192,7 +190,7 @@ function render() {
   el.disc.hidden = !(blank && active.page !== "home");
   if (!el.home.hidden) renderTiles();
   if (!el.disc.hidden) {
-    if (!routing && !discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; $("#d-detail").hidden = true; $("#reader").hidden = true; closePlayer(); }
+    if (!routing && !discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; leaveViews(); }
     showDiscover(active.page, $("#d-q").value.trim());
   }
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", blank && b.dataset.page === active.page));
@@ -343,7 +341,7 @@ function onKey(e) {
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#scd").hidden) return closeShortcut(); if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#pld").hidden) return closePld(false); if (!$("#scd").hidden) return closeShortcut(); if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -449,13 +447,14 @@ armed($("#clear-hist"), "Clear", () => { db.set("history", []); refreshDiscover(
 armed($("#reset-sc"), "Reset", () => { db.set("shortcuts", DEFAULT_TILES.map((x) => ({ ...x }))); render(); drawSettings(); toast("Shortcuts reset"); });
 armed($("#clear-bm"), "Clear", () => { db.set("bookmarks", []); render(); drawSettings(); toast("Bookmarks cleared"); });
 // sections
-const PANES = ["appearance", "search", "privacy", "browser", "about"];
+const PANES = ["appearance", "search", "privacy", "browser", "plugins", "about"];
 function showPane(name) {
   if (!PANES.includes(name)) name = "appearance";
   db.set("settingsTab", name);
   document.querySelectorAll("#set-nav [data-tab]").forEach((b) => { const on = b.dataset.tab === name; b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; });
   document.querySelectorAll(".pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
   $(".spanes").scrollTop = 0;
+  if (name === "plugins") drawPlugins();
 }
 $("#set-nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) showPane(b.dataset.tab); });
 $("#set-nav").addEventListener("keydown", (e) => {
@@ -482,137 +481,31 @@ document.addEventListener("pointermove", (e) => {
   });
 });
 
-// Discover pages. Anime: AniList (+ built-in player when a source API is configured). Manga: MangaDex (read here).
-const FIELDS = "id title{romaji english} coverImage{large} averageScore format episodes chapters";
-const LIST = `query($t:MediaType,$s:[MediaSort],$q:String){Page(perPage:20){media(type:$t,sort:$s,search:$q,isAdult:false){${FIELDS}}}}`;
-const ONE = `query($id:Int){Media(id:$id){${FIELDS} idMal type description genres siteUrl nextAiringEpisode{episode} externalLinks{url site type}}}`;
-async function gql(query, variables) {
-  const r = await fetch("/api/anilist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }) });
-  const j = await r.json();
-  if (!j.data) throw new Error((j.errors && j.errors[0].message) || "AniList error");
-  return j.data;
-}
-const img = (u) => `/img?u=${encodeURIComponent(u)}`;
 // Loading states: a spinner (optionally with text) and shimmering placeholder cards
 const spinner = (text = "", cls = "") => `<div class="loading ${cls}" role="status" aria-live="polite"><span class="spin"></span>${text ? `<span>${esc(text)}</span>` : ""}</div>`;
 const skeleton = (n = 12) => `<div class="grid">${'<div class="skcard"><i class="sk-img"></i><i class="sk-l"></i><i class="sk-l s"></i></div>'.repeat(n)}</div>`;
 // Cover/page images get a shimmer until they arrive (load/error don't bubble, so listen in the capture phase)
 for (const type of ["load", "error"]) document.addEventListener(type, (e) => { if (e.target.tagName === "IMG") e.target.classList.add("ok"); }, true);
-const mname = (m) => m.title.english || m.title.romaji;
-const mmeta = (m) => [m.averageScore && "★ " + m.averageScore, m.format && m.format.replace("_", " "), m.episodes ? m.episodes + " eps" : m.chapters ? m.chapters + " ch" : ""].filter(Boolean).join(" · ");
-const card = (m) => `<div class="mcard glow" data-id="${m.id}"><img loading="lazy" alt="" src="${img(m.coverImage.large)}"><b>${esc(mname(m))}</b><small>${esc(mmeta(m))}</small></div>`;
-const rowsHtml = (rows, data, render) => rows.map(([h], i) => `<h3>${h}</h3><div class="grid">${render(data[i]).join("") || '<p class="muted">Nothing found.</p>'}</div>`).join("");
+const closeBtn = () => `<button type="button" class="xb md dx" title="Close" aria-label="Close">${ic("close")}</button>`;
 
-const loaders = {
-  async anime(q, key) {
-    const rows = q ? [["Results", { s: ["SEARCH_MATCH"], q }]] : [["Trending now", { s: ["TRENDING_DESC"] }], ["Most popular", { s: ["POPULARITY_DESC"] }]];
-    const data = await Promise.all(rows.map(([, v]) => gql(LIST, { t: "ANIME", ...v })));
-    if (key === discKey) $("#d-body").innerHTML = (q ? "" : recentHtml("anime")) + rowsHtml(rows, data, (d) => d.Page.media.map(card));
-  },
-  async manga(q, key) {
-    const rows = q ? [["Results", `/manga?limit=24&title=${encodeURIComponent(q)}&order[relevance]=desc${MDQ}`]]
-      : [["Most followed", `/manga?limit=24&order[followedCount]=desc${MDQ}`], ["Recently updated", `/manga?limit=24&order[latestUploadedChapter]=desc${MDQ}`]];
-    const data = await Promise.all(rows.map(([, p]) => md(p)));
-    if (key === discKey) $("#d-body").innerHTML = (q ? "" : recentHtml("manga")) + rowsHtml(rows, data, (d) => d.data.map(mcard));
-  },
-};
+// Pages: "history" is built in, plugins register more (api.page). A page is { id, title, list(q, ctx), route?(parts, ctx), leave?(), open?(id), action?() }.
+const pages = new Map();
 let discKey = "", discLoad = Promise.resolve();
 function showDiscover(page, q = "") {
-  const key = page + "|" + q;
+  const key = page + "|" + q, pg = pages.get(page);
+  if (!pg) return discLoad;
   if (key === discKey) return discLoad;
   discKey = key;
-  $("#d-title").textContent = PAGE_TITLES[page]; $("#d-q").placeholder = "Search " + PAGE_TITLES[page].toLowerCase() + "…";
+  $("#d-title").textContent = PAGE_TITLES[page]; $("#d-q").placeholder = pg.placeholder || "Search " + PAGE_TITLES[page].toLowerCase() + "…";
+  $("#d-form").hidden = pg.search === false;
   $("#d-body").innerHTML = spinner("Loading " + PAGE_TITLES[page].toLowerCase() + "…") + skeleton();
+  const ctx = { q, body: $("#d-body"), current: () => key === discKey, render(html) { if (key === discKey) $("#d-body").innerHTML = html; } };
   return (discLoad = (async () => {
-    try { await loaders[page](q, key); }
+    try { await pg.list(q, ctx); }
     catch (err) { if (key === discKey) { discKey = ""; $("#d-body").innerHTML = `<p class="muted">Couldn't load this page (${esc(err.message)}).</p>`; } }
   })());
 }
 $("#d-form").addEventListener("submit", (e) => { e.preventDefault(); nav(listHash(active.page, $("#d-q").value.trim())); });
-
-// MangaDex
-const MDQ = "&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&availableTranslatedLanguage[]=en&hasAvailableChapters=true";
-async function md(path) {
-  const r = await fetch("/api/md" + path), j = await r.json();
-  if (!r.ok || j.result === "error") throw new Error((j.errors && j.errors[0].title) || "MangaDex error");
-  return j;
-}
-const mItems = new Map();
-const mTitle = (m) => m.attributes.title.en || Object.values(m.attributes.title)[0] || "Untitled";
-const mCover = (m) => { const c = m.relationships.find((r) => r.type === "cover_art"); return c && c.attributes ? img(`https://uploads.mangadex.org/covers/${m.id}/${c.attributes.fileName}.256.jpg`) : ""; };
-const mcard = (m) => { mItems.set(m.id, m); return `<div class="mcard glow" data-id="${m.id}"><img loading="lazy" alt="" src="${mCover(m)}"><b>${esc(mTitle(m))}</b><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small></div>`; };
-const closeBtn = () => `<button type="button" class="xb md dx" title="Close" aria-label="Close">${ic("close")}</button>`;
-const chLabel = (c) => "Ch. " + (c.attributes.chapter || "?") + (c.attributes.title ? " – " + c.attributes.title : "");
-let reading = null;
-const badge = (official) => official ? '<span class="badge ok">Official</span>' : '<span class="badge warn">Unofficial</span>';
-async function loadManga(id) {
-  let m = mItems.get(id);
-  if (!m) { m = (await md(`/manga/${id}?includes[]=cover_art`)).data; mItems.set(id, m); }
-  return m;
-}
-const chapterCache = new Map();
-async function loadChapters(id) {
-  if (chapterCache.has(id)) return chapterCache.get(id);
-  const f = await md(`/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=desc&includeExternalUrl=1&contentRating[]=safe&contentRating[]=suggestive`);
-  const seenH = new Set(), seenO = new Set();
-  const hosted = f.data.filter((c) => !c.attributes.externalUrl && c.attributes.pages > 0 && !seenH.has(c.attributes.chapter) && seenH.add(c.attributes.chapter)).reverse();
-  const ext = f.data.filter((c) => /^https?:\/\//.test(c.attributes.externalUrl || "") && !seenO.has(c.attributes.chapter) && seenO.add(c.attributes.chapter)).slice(0, 24);
-  if (chapterCache.size > 20) chapterCache.delete(chapterCache.keys().next().value);
-  chapterCache.set(id, { hosted, ext });
-  return { hosted, ext };
-}
-const chKey = (c, i) => c.attributes.chapter ?? "i" + i; // the chapter piece of #manga/read/<id>/<chapter>
-async function mangaDetail(id) {
-  const d = $("#d-detail");
-  d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}${spinner("Loading details…")}</div>`;
-  let m;
-  try { m = await loadManga(id); } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; return; }
-  if (d.hidden) return; // closed while loading
-  const L = m.attributes.links || {};
-  const stores = [["engtl", "Official English"], ["amz", "Amazon"], ["ebj", "eBookJapan"], ["cdj", "CDJapan"]].filter(([k]) => /^https?:\/\//.test(L[k] || ""));
-  const chip = (url, text) => `<button class="chip" data-open="${esc(url)}">${esc(text)}</button>`;
-  const storeChips = stores.map(([k, n]) => chip(L[k], n)).join("");
-  const tags = m.attributes.tags.slice(0, 8).map((t) => `<span class="chip">${esc(t.attributes.name.en || "")}</span>`).join("");
-  const desc = ((m.attributes.description || {}).en || "No description.").replace(/\[[^\]]*\]|[*_>`#]/g, "").slice(0, 700);
-  d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${mCover(m)}"><div class="dbody"><h2>${esc(mTitle(m))}</h2><small>${esc([m.attributes.status, m.attributes.year].filter(Boolean).join(" · "))}</small>
-    <div class="chips" style="margin-top:8px">${tags}</div><p class="desc">${esc(desc)}</p>
-    <h4>Official sources ${badge(true)}</h4><div class="chips" id="mo">${storeChips || spinner("", "sm")}</div>
-    <h4>Unofficial sources ${badge(false)}</h4><div class="chips" id="m-unofficial"></div>
-    <h4>Read here ${badge(false)}</h4><small class="muted">Community translations hosted on MangaDex.</small><div class="chlist" id="chs">${spinner("Loading chapters…", "sm")}</div>
-    <h4>Info</h4><div class="chips">${chip("https://mangadex.org/title/" + m.id, "MangaDex")}${L.al ? chip("https://anilist.co/manga/" + L.al, "AniList") : ""}</div></div></div>`;
-  const providers = window.CloudoraMangaProviders;
-  if (providers) $("#m-unofficial").innerHTML = providers.servers.map((server) => {
-    const url = providers.build(server, { id: m.id, title: mTitle(m) });
-    return url ? chip(url, server.name) : "";
-  }).join("");
-  try {
-    const { hosted, ext } = await loadChapters(id);
-    if (!$("#mo")) return; // popup was closed or replaced
-    reading = { m, chapters: hosted };
-    $("#mo").innerHTML = (storeChips + ext.map((c) => chip(c.attributes.externalUrl, "Read " + chLabel(c))).join("")) || '<span class="muted">No official links listed.</span>';
-    $("#chs").innerHTML = hosted.length ? hosted.map((c, i) => `<button class="chip" data-ch="${i}">${esc(chLabel(c))}</button>`).reverse().join("") : '<p class="muted">No English chapters hosted on MangaDex.</p>';
-  } catch (err) {
-    if (!$("#mo")) return;
-    $("#mo").innerHTML = storeChips || '<span class="muted">No official links listed.</span>';
-    $("#chs").innerHTML = `<p class="muted">Couldn't load chapters (${esc(err.message)}).</p>`;
-  }
-}
-async function openChapter(i) {
-  const { m, chapters } = reading, c = chapters[i], rd = $("#reader");
-  pushRecent("manga", { id: m.id, m, label: chLabel(c) });
-  $("#d-detail").hidden = true; rd.hidden = false; rd.scrollTop = 0; syncView();
-  rd.innerHTML = `<div class="rhead"><button class="btn back" id="r-close">${ic("back")}Back</button><b>${esc(mTitle(m))} · ${esc(chLabel(c))}</b>
-    <button class="btn" data-rn="${i - 1}" ${i < 1 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-rn="${i + 1}" ${i >= chapters.length - 1 ? "disabled" : ""}>Next ›</button></div><div class="rpages">${spinner("Loading pages…")}</div>`;
-  try {
-    const s = await md(`/at-home/server/${c.id}`);
-    $("#reader .rpages").innerHTML = s.chapter.data.map((f) => `<img referrerpolicy="no-referrer" loading="lazy" alt="Loading…" src="${esc(`/api/md-image?u=${encodeURIComponent(`${s.baseUrl}/data/${s.chapter.hash}/${f}`)}`)}">`).join("") +
-      `<p class="muted">Pages not showing? <button class="chip" data-open="https://mangadex.org/chapter/${c.id}">Open this chapter on MangaDex</button><br>Manga from MangaDex. Please support the creators.</p>`;
-  } catch (err) { $("#reader .rpages").innerHTML = `<p class="muted">Couldn't load this chapter (${esc(err.message)}).</p>`; }
-}
-
-// Anime detail (AniList) + built-in player
-let streamOn = false, streamOfficial = false, watching = null;
-fetch("/api/config").then((r) => r.json()).then((c) => { streamOn = !!c.stream; streamOfficial = !!c.official; }).catch(() => {});
 
 // ---- small styled dropdown (replaces native <select>): one floating menu at a time, keyboard friendly ----
 let dd = null;
@@ -649,212 +542,38 @@ document.addEventListener("pointerdown", (e) => { if (dd && !dd.menu.contains(e.
 document.addEventListener("scroll", (e) => { if (dd && !dd.menu.contains(e.target)) closeDD(); }, true);
 addEventListener("resize", closeDD);
 
-// ---- episodes: shown in batches of 100 with a dropdown to pick the batch ----
-const BATCH = 100;
-const epRange = (b, count) => [b * BATCH + 1, Math.min(count, (b + 1) * BATCH)];
-function renderEps() {
-  const w = watching; if (!w) return;
-  const [a, z] = epRange(w.batch, w.count);
-  const html = Array.from({ length: z - a + 1 }, (_, i) => `<button class="chip${a + i === w.last ? " cur" : ""}" data-ep="${a + i}">${a + i}</button>`).join("");
-  for (const [list, label] of [["#eps", "#ep-batch-l"], ["#w-eps", "#w-batch-l"]]) {
-    const box = $(list); if (!box) continue;
-    box.innerHTML = html;
-    const l = $(label); if (l) l.textContent = `Episodes ${a} – ${z}`;
-    const cur = box.querySelector(".cur"); if (cur) box.scrollTop = Math.max(0, cur.offsetTop - box.offsetTop - box.clientHeight / 2 + cur.offsetHeight / 2);
-  }
-}
-function pickBatch(btn) {
-  const w = watching, n = Math.ceil(w.count / BATCH);
-  openDD(btn, Array.from({ length: n }, (_, b) => { const [a, z] = epRange(b, w.count); return [b, `${a} – ${z}`, w.last >= a && w.last <= z ? "watching" : ""]; }), w.batch, (b) => { w.batch = b; renderEps(); });
-}
-
-const animeCache = new Map();
-async function loadAnime(id) {
-  if (!animeCache.has(id)) {
-    animeCache.set(id, (await gql(ONE, { id })).Media);
-    if (animeCache.size > 30) animeCache.delete(animeCache.keys().next().value);
-  }
-  return animeCache.get(id);
-}
-function makeWatching(id, m) {
-  const count = Math.min(5000, m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0));
-  const last = Math.min(count, (db.get("recent:anime", []).find((x) => x.id === id) || {}).ep || 0); // reopen on the batch you were watching
-  return { id, malId: m.idMal || 0, title: mname(m), count, cover: m.coverImage.large, last, batch: last ? Math.floor((last - 1) / BATCH) : 0 };
-}
-async function animeDetail(id) {
-  const d = $("#d-detail");
-  d.hidden = false; d.innerHTML = `<div class="dcard">${closeBtn()}${spinner("Loading details…")}</div>`;
-  try {
-    const m = await loadAnime(id);
-    if (d.hidden) return; // closed while loading
-    const desc = (m.description || "No description.").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
-    const seen = new Set();
-    const links = [...(m.externalLinks || []), { url: m.siteUrl, site: "AniList", type: "INFO" }]
-      .filter((l) => l.url && /^https?:\/\//.test(l.url) && l.type !== "SOCIAL" && !seen.has(l.site) && seen.add(l.site)).slice(0, 9);
-    if (!watching || watching.id !== id) watching = makeWatching(id, m);
-    const count = watching.count;
-    const play = count ? `<h4>Play here ${badge(streamOfficial)}</h4>
-      <div class="eprow">${count > BATCH ? `<button type="button" class="dd-btn" id="ep-batch" aria-haspopup="listbox" aria-expanded="false"><span id="ep-batch-l"></span>${ic("down")}</button>` : ""}<small class="muted">${count} episode${count > 1 ? "s" : ""}</small></div>
-      <div class="chlist eps" id="eps"></div>` : "";
-    d.innerHTML = `<div class="dcard">${closeBtn()}<img alt="" src="${img(m.coverImage.large)}"><div class="dbody">
-      <h2>${esc(mname(m))}</h2><small>${esc(mmeta(m))}</small>
-      <div class="chips" style="margin-top:8px">${(m.genres || []).map((g) => `<span class="chip">${esc(g)}</span>`).join("")}</div>
-      <p class="desc">${esc(desc)}</p>${play}<h4>Official sources ${badge(true)}</h4>
-      <div class="chips">${links.map((l) => `<button class="chip" data-open="${esc(l.url)}">${esc(l.site)}</button>`).join("")}</div></div></div>`;
-    renderEps();
-  } catch (err) { d.innerHTML = `<div class="dcard">${closeBtn()}<p class="muted">Couldn't load details (${esc(err.message)}).</p></div>`; }
-}
-
-// ---- player ----
-// Direct HLS/MP4 sources (from the optional STREAM_API) play in a <video>; embed providers play in an iframe.
-// The iframe must NEVER get a sandbox attribute: providers detect it and refuse to play. When the page is
-// cross-origin isolated (Chromium) the iframe needs `credentialless`, otherwise the browser blocks the embed.
-const ensureHls = () => new Promise((res) => { if (window.Hls) return res(); const s = document.createElement("script"); s.src = "/hls/hls.min.js"; s.onload = s.onerror = res; document.head.appendChild(s); });
-const pmsg = (t) => { const m = $("#p-msg"); if (m) m.textContent = t; };
-const pload = (text) => { const l = $("#p-load"); if (!l) return; l.hidden = !text; if (text) l.innerHTML = spinner(text); };
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-let player = { items: [], cur: -1 }, embedTimer = 0;
-function closePlayer() {
-  clearTimeout(embedTimer); closeDD();
-  const pl = $("#player"), v = $("#vid"); if (v) { v.pause(); if (v._hls) v._hls.destroy(); }
-  pl.hidden = true; pl.innerHTML = ""; playing = null; syncView();
-}
-async function attach(v, src) {
-  const pb = $("#p-badge"); if (pb) pb.innerHTML = badge(src.official ?? streamOfficial);
-  if (v._hls) { v._hls.destroy(); v._hls = null; }
-  const fail = () => { pload(""); pmsg("Couldn't play this source (the host may block cross-site playback). Try another server."); };
-  if (src.type === "hls" || /\.m3u8(\?|$)/i.test(src.url)) {
-    await ensureHls();
-    if (window.Hls && Hls.isSupported()) {
-      const h = (v._hls = new Hls());
-      h.on(Hls.Events.ERROR, (_, e) => e.fatal && fail());
-      h.loadSource(src.url); h.attachMedia(v);
-    } else if (v.canPlayType("application/vnd.apple.mpegurl")) v.src = src.url; // Safari / iOS native HLS
-    else { pload(""); pmsg("This browser can't play HLS streams."); }
-  } else v.src = src.url;
-}
-function mountEmbed(url) {
-  clearTimeout(embedTimer);
-  const stage = $("#pstage"); $("#p-embed")?.remove();
-  const f = document.createElement("iframe");
-  f.id = "p-embed"; f.title = `${watching.title} · Episode ${watching.last}`;
-  f.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write";
-  f.allowFullscreen = true;
-  if (window.crossOriginIsolated) f.setAttribute("credentialless", "");
-  f.addEventListener("load", () => { clearTimeout(embedTimer); pload(""); pmsg(""); });
-  stage.appendChild(f); // a fresh iframe per server so switching doesn't pile up history entries
-  f.src = url;
-  pload("Loading player…"); pmsg("");
-  embedTimer = setTimeout(() => { pload(""); pmsg("Taking a while. If the player stays blank, pick another server below."); }, 12000);
-}
-function renderServers() {
-  const box = $("#p-servers"); if (!box) return;
-  const groups = new Set(player.items.map((x) => x.group)); let last = "", html = "";
-  player.items.forEach((it, i) => {
-    if (groups.size > 1 && it.group !== last) html += `<div class="sgrp">${esc(it.group)}</div>`;
-    last = it.group;
-    html += `<button type="button" role="menuitemradio" aria-checked="${i === player.cur}" class="srv${i === player.cur ? " on" : ""}" data-srv="${i}"><span class="dot"></span><span class="st">${esc(it.title)}</span>${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</button>`;
-  });
-  box.innerHTML = html;
-}
-async function useServer(i) {
-  const it = player.items[i], v = $("#vid"); if (!it || !v) return;
-  player.cur = i; renderServers(); pmsg("");
-  $("#p-speed").hidden = it.kind !== "native";
-  const tab = $("#p-tab"); tab.hidden = it.kind !== "embed"; tab.dataset.open = it.kind === "embed" ? it.url : "";
-  if (it.kind === "embed") {
-    v.pause(); v.hidden = true; if (v._hls) { v._hls.destroy(); v._hls = null; }
-    $("#p-badge").innerHTML = badge(it.official ?? false);
-    if (it.name) db.set("server", it.name);
-    mountEmbed(it.url);
-  } else {
-    clearTimeout(embedTimer); $("#p-embed")?.remove(); v.hidden = false;
-    pload("Loading stream…");
-    await attach(v, it.src);
-  }
-}
-async function playEpisode(num) {
-  const w = watching, pl = $("#player"), key = `progress:${w.id}:${num}`;
-  w.last = num; w.batch = Math.floor((num - 1) / BATCH); renderEps();
-  pushRecent("anime", { id: w.id, title: w.title, cover: w.cover, label: "Episode " + num, ep: num });
-  closeDD(); clearTimeout(embedTimer);
-  $("#d-detail").hidden = true; pl.hidden = false; pl.scrollTop = 0; syncView();
-  const many = w.count > BATCH;
-  pl.innerHTML = `<div class="rhead"><button class="btn back" id="p-close">${ic("back")}Back</button><b>${esc(w.title)} · Episode ${num}</b></div>
-    <div class="pbody">
-      <div class="pstage" id="pstage"><video id="vid" controls playsinline autoplay crossorigin="anonymous" hidden></video><div class="pload" id="p-load">${spinner("Finding sources…")}</div></div>
-      <div class="pbar"><span id="p-badge"></span><span class="muted" id="p-msg"></span><span class="grow"></span>
-        <div class="seg sm" id="p-speed" hidden>${SPEEDS.map((s) => `<button type="button" data-spd="${s}"${s === 1 ? ' class="on"' : ""}>${s}×</button>`).join("")}</div>
-        <button type="button" class="btn" id="p-tab" hidden>${ic("ext")}Open in tab</button>
-        <button class="btn" data-pn="${num - 1}" ${num < 2 ? "disabled" : ""}>‹ Prev</button><button class="btn" data-pn="${num + 1}" ${num >= w.count ? "disabled" : ""}>Next ›</button></div>
-      <div class="pgrid">
-        <div class="pbox"><div class="phead"><h4>Episodes</h4>${many ? `<button type="button" class="dd-btn" id="w-batch" aria-haspopup="listbox" aria-expanded="false"><span id="w-batch-l"></span>${ic("down")}</button>` : ""}<small class="muted">${w.count} total</small></div><div class="chlist eps" id="w-eps"></div></div>
-        <div class="pbox"><div class="phead"><h4>Servers</h4></div><div class="srvlist" id="p-servers" role="menu"></div></div>
-      </div>
-    </div>`;
-  renderEps();
-  const v = $("#vid"), ids = { anilist: w.id, mal: w.malId, ep: num, lang: "sub" }, api = window.CloudoraVideoProviders;
-  const items = [];
-  if (streamOn) {
-    try {
-      const r = await fetch(`/api/stream/sources?anilist_id=${w.id}&episode=${num}`), j = await r.json().catch(() => ({}));
-      if (!$("#vid") || watching !== w || w.last !== num) return; // closed or changed episode while we waited
-      if (!r.ok) throw new Error(j.error || "source API error " + r.status);
-      const all = (j.sources || []).filter((s) => s.url && /^https?:\/\//.test(s.url));
-      all.forEach((s, n) => {
-        const title = s.label || s.quality || "Source " + (n + 1);
-        if (s.type === "embed") items.push({ kind: "embed", group: "Source API", title, sub: "embed", url: s.url, official: s.official ?? streamOfficial });
-        else items.push({ kind: "native", group: "Source API", title, sub: (s.type || "").toUpperCase(), src: s });
-      });
-      (j.subtitles || []).forEach((t, i) => {
-        if (!/^https?:\/\//.test(t.url)) return;
-        const k = document.createElement("track"); k.kind = "subtitles"; k.src = t.url; k.label = t.label || t.lang || "Subtitles"; k.srclang = t.lang || "en"; k.default = i === 0; v.appendChild(k);
-      });
-    } catch (err) { if (!api || !api.available(ids).length) { pload(""); return pmsg("Couldn't start playback: " + err.message); } }
-  }
-  const saved = db.get("server", "");
-  const embeds = api ? api.available(ids) : [];
-  embeds.sort((a, b) => (b.name === saved) - (a.name === saved)); // last server you used goes first
-  for (const s of embeds) { const d = api.describe(s); items.push({ kind: "embed", group: "Embed servers", name: s.name, title: d.title, sub: d.sub, url: api.build(s, ids) }); }
-  if (!items.length) { pload(""); return pmsg("No sources found for this episode."); }
-  player = { items, cur: -1 };
-  let last = 0;
-  v.onloadedmetadata = () => { const t = db.get(key, 0); if (t > 10 && t < v.duration - 30) v.currentTime = t; v.playbackRate = +($("#p-speed .on")?.dataset.spd || 1); pload(""); pmsg(""); };
-  v.onplaying = () => pload("");
-  v.ontimeupdate = () => { if (Date.now() - last > 5000) { last = Date.now(); db.set(key, v.currentTime); } };
-  v.onended = () => { db.set(key, 0); if (num < w.count) nav(`anime/watch/${w.id}/${num + 1}`, "replace"); };
-  v.onerror = () => { pload(""); pmsg("Couldn't play this source (the host may block cross-site playback). Try another server."); };
-  useServer(0);
-}
-
+const clickHandlers = []; // plugins add theirs with api.onClick; a handler returns true when it dealt with the click
 el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
+  for (const h of clickHandlers.slice()) { try { if (h.fn(e) === true) return; } catch (err) { console.error("[cloudora] plugin click handler failed", err); } }
   const hd = t.closest("[data-hdel]"); if (hd) { e.stopPropagation(); return histRemove(+hd.dataset.hdel); }
-  const rx = t.closest("[data-rx]"); if (rx) { e.stopPropagation(); return removeRecent(rx); }
   const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
   const open = t.closest("[data-open]"); if (open) { if (!d.hidden) nav(listHash(active.page), "replace"); return newTab(open.dataset.open); }
-  if (t.closest("#p-close") || t.closest("#r-close")) return back();
-  const eb = t.closest("#ep-batch, #w-batch"); if (eb) return pickBatch(eb);
-  const sv = t.closest("[data-srv]"); if (sv) return useServer(+sv.dataset.srv);
-  const sp = t.closest("[data-spd]"); if (sp) { $("#vid").playbackRate = +sp.dataset.spd; sp.parentNode.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === sp)); return; }
-  const pn = t.closest("[data-pn]"); if (pn) return pn.disabled || nav(`anime/watch/${watching.id}/${pn.dataset.pn}`, "replace");
-  const ep = t.closest("[data-ep]"); if (ep) return nav(`anime/watch/${watching.id}/${ep.dataset.ep}`, "replace");
-  const rn = t.closest("[data-rn]"); if (rn) { if (rn.disabled) return; const i = +rn.dataset.rn; return nav(`manga/read/${reading.m.id}/${encodeURIComponent(chKey(reading.chapters[i], i))}`, "replace"); }
-  const ch = t.closest("[data-ch]"); if (ch) { const i = +ch.dataset.ch; return nav(`manga/read/${reading.m.id}/${encodeURIComponent(chKey(reading.chapters[i], i))}`, "replace"); }
+  if (t.closest("[data-back]")) return back();
   if (t.closest(".dx") || t === d) return back();
   const c = t.closest(".mcard"); if (!c) return;
+  const pg = pages.get(active.page);
+  if (pg && pg.open) return pg.open(c.dataset.id);
   nav(`${active.page}/info/${encodeURIComponent(c.dataset.id)}`);
 });
+// open an address in this tab when it is a blank page, else in a new tab
+function openInTab(url) {
+  if (!active.url) { active.page = "home"; active.title = "New tab"; go(active, url); } else newTab(url);
+}
 function openPage(p) {
-  if (p === "manga") { // straight to the manga site: reuse this tab if it is a blank page, else open a new one
-    if (!active.url) { active.page = "home"; active.title = "New tab"; go(active, MANGA_URL); } else newTab(MANGA_URL);
-    return;
-  }
+  const pg = pages.get(p);
+  if (pg && pg.action) { try { pg.action(); } catch (err) { console.error(err); toast("That plugin failed: " + err.message); } return; }
   if (!active.url) { active.page = p; active.title = PAGE_TITLES[p]; }
   else newTab(null, p);
   nav(p);
 }
-document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
+// nav buttons: Home, one per plugin page, History
+function renderNav() {
+  const order = ["home", ...[...pages.values()].filter((x) => !x.builtin && x.nav !== false).map((x) => x.id), "history"];
+  $("#nav").innerHTML = order.map((id) => `<button data-page="${esc(id)}">${esc(id === "home" ? "Home" : PAGE_TITLES[id])}</button>`).join("");
+  $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", active && !active.url && b.dataset.page === active.page));
+}
 // logo -> home: a blank tab becomes the home page; from a website, jump to an open home tab (or make one)
 $("#brand").onclick = () => {
   if (!active.url) return openPage("home");
@@ -863,18 +582,14 @@ $("#brand").onclick = () => {
 };
 
 // ---------- #hash routing ----------
-//   #home  #history  #anime  #anime/search/<q>  #anime/info/<id>  #anime/watch/<id>/<ep>
-//   #manga #manga/search/<q> #manga/info/<id>   #manga/read/<id>/<chapter>
-// The hash is the single source of truth for what the Anime / Manga pages show, so reload, back/forward and shared links all work.
-const ID_RE = { anime: /^\d{1,8}$/, manga: /^[0-9a-f-]{36}$/ };
+//   #home  #history  #<page>  #<page>/search/<q>  #<page>/<anything else the page's plugin understands>
+// The hash is the single source of truth for what a page shows, so reload, back/forward and shared links all work.
 function parseHash(h = location.hash) {
   const p = h.replace(/^#\/?/, "").split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
   const page = p[0]; if (!PAGE_TITLES[page]) return null;
-  const r = { page, view: "list", q: "" };
+  const r = { page, view: "list", q: "", parts: [] };
   if (p[1] === "search" && page !== "home") return { ...r, view: "search", q: p.slice(2).join("/").trim() };
-  const ok = ID_RE[page] && ID_RE[page].test(p[2] || "");
-  if (p[1] === "info" && ok) return { ...r, view: "info", id: p[2] };
-  if (p[1] === (page === "anime" ? "watch" : "read") && ok) return { ...r, view: page === "anime" ? "watch" : "read", id: p[2], n: p[3] || "" };
+  if (p.length > 1 && pages.get(page) && pages.get(page).route) return { ...r, view: "sub", parts: p.slice(1) };
   return r;
 }
 const listHash = (page, q = ($("#d-q") ? $("#d-q").value.trim() : "")) => page + (q ? "/search/" + encodeURIComponent(q) : "");
@@ -906,43 +621,30 @@ function syncView() {
   if (on) { discScroll = el.disc.scrollTop; el.disc.classList.add("view"); el.disc.scrollTop = 0; }
   else { el.disc.classList.remove("view"); const sc = discScroll; discLoad.then(() => { el.disc.scrollTop = sc; }); }
 }
-let playing = null, readingNow = null, routeSeq = 0;
+// hide the popup / reader / player layers and tell plugin pages to stop whatever they were showing there
+function leaveViews() {
+  closeDD(); $("#d-detail").hidden = true; $("#reader").hidden = true;
+  for (const pg of pages.values()) { try { pg.leave && pg.leave(); } catch (err) { console.error("[cloudora] plugin leave() failed", err); } }
+  $("#player").hidden = true; $("#player").innerHTML = ""; $("#reader").innerHTML = "";
+  syncView();
+}
+let routeSeq = 0;
 async function applyRoute(initial = false) {
   const r = parseHash(); if (!r || !active) return;
-  if (r.page === "manga") { history.replaceState({ i: (history.state && history.state.i) || 0 }, "", "#home"); return openPage("manga"); }
+  const pg = pages.get(r.page);
+  if (pg && pg.action) { history.replaceState({ i: (history.state && history.state.i) || 0 }, "", "#home"); return openPage(r.page); } // link-style page (e.g. a plugin that just opens a site)
   if (active.url) { if (!initial) return; newTab(null, r.page); }
   else if (active.page !== r.page) { active.page = r.page; active.title = PAGE_TITLES[r.page]; }
   const seq = ++routeSeq;
   routing = true; $("#d-q").value = r.q; try { render(); } finally { routing = false; }
-  const d = $("#d-detail"), rd = $("#reader");
-  if (r.page === "home" || r.page === "history" || r.view === "list" || r.view === "search") { d.hidden = true; rd.hidden = true; closePlayer(); return syncView(); }
   const stale = () => seq !== routeSeq;
-  const toInfo = (msg) => { if (msg) toast(msg); return nav(`${r.page}/info/${r.id}`, "replace"); };
-  if (r.view === "info") {
-    closePlayer(); rd.hidden = true;
-    await (r.page === "anime" ? animeDetail(+r.id) : mangaDetail(r.id));
-  } else if (r.page === "anime") { // watch
-    d.hidden = true; rd.hidden = true;
-    let w = watching && watching.id === +r.id ? watching : null;
-    if (!w) {
-      try { const m = await loadAnime(+r.id); if (stale()) return; w = watching = makeWatching(+r.id, m); }
-      catch (err) { return toInfo("Couldn't load this anime"); }
-    }
-    if (!w.count) return toInfo("No episode list for this anime yet");
-    const n = Math.max(1, Math.min(w.count, parseInt(r.n, 10) || 1));
-    if (String(n) !== r.n) return nav(`anime/watch/${r.id}/${n}`, "replace");
-    if (!(playing && playing.id === w.id && playing.n === n && !$("#player").hidden)) { playing = { id: w.id, n }; await playEpisode(n); }
-  } else { // read
-    d.hidden = true; closePlayer();
-    try {
-      const m = await loadManga(r.id), { hosted } = await loadChapters(r.id); if (stale()) return;
-      reading = { m, chapters: hosted };
-      const i = hosted.findIndex((c, k) => String(chKey(c, k)) === r.n);
-      if (i < 0) return toInfo(hosted.length ? "Chapter not found" : "No chapters hosted on MangaDex");
-      if (!(readingNow === r.id + "|" + i && !rd.hidden)) { readingNow = r.id + "|" + i; await openChapter(i); }
-    } catch (err) { return toInfo("Couldn't load this chapter"); }
-  }
-  if (!stale()) syncView();
+  if (r.page === "home" || r.view !== "sub") { leaveViews(); return; }
+  let handled = false;
+  try { handled = await pg.route(r.parts, { stale, nav, replace: (h) => nav(h, "replace"), toast, syncView }); }
+  catch (err) { console.error("[cloudora] plugin route failed", err); toast("That page failed to load"); }
+  if (stale()) return;
+  if (handled === false) { leaveViews(); return; }
+  syncView();
 }
 addEventListener("popstate", () => { if (!active.url) applyRoute(); });
 
@@ -963,40 +665,17 @@ function histAdd(url, title) {
 function histRemove(t) { db.set("history", histList().filter((h) => h.t !== t)); refreshDiscover("history", true); }
 function refreshDiscover(page, force) { if (discKey.startsWith(page + "|") && (force || active.page === page)) { const k = discKey; discKey = ""; if (!active.url && active.page === page) showDiscover(page, k.slice(page.length + 1)); } }
 const dayLabel = (t) => { const d = new Date(t), n = new Date(), y = new Date(n - 864e5); return d.toDateString() === n.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); };
-loaders.history = async (q, key) => {
+pages.set("history", { id: "history", title: "History", builtin: true, placeholder: "Search history…", async list(q, ctx) {
   const s = q.toLowerCase(), list = histList().filter((h) => !s || (h.title + " " + h.url).toLowerCase().includes(s));
-  if (key !== discKey) return;
-  if (!list.length) { $("#d-body").innerHTML = `<p class="muted">${q ? "No matches." : prefs.history ? "Nothing here yet. Pages you visit show up here." : "History is turned off in Settings."}</p>`; return; }
+  if (!list.length) return ctx.render(`<p class="muted">${q ? "No matches." : prefs.history ? "Nothing here yet. Pages you visit show up here." : "History is turned off in Settings."}</p>`);
   let html = "", day = "";
   for (const h of list.slice(0, 400)) {
     const d = dayLabel(h.t);
     if (d !== day) { day = d; html += `<div class="hday">${esc(d)}</div>`; }
     html += `<div class="hrow" data-goto="${esc(h.url)}">${fav(h.url)}<div class="tx"><b>${esc(h.title)}</b><small>${esc(h.url)}</small></div><span class="tm">${new Date(h.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><button class="rm xb" data-hdel="${h.t}" title="Remove" aria-label="Remove from history">${ic("close")}</button></div>`;
   }
-  $("#d-body").innerHTML = html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : "");
-};
-
-// "Continue watching / reading" rows on the Anime and Manga pages
-function pushRecent(kind, entry) {
-  const l = db.get("recent:" + kind, []).filter((x) => x.id !== entry.id);
-  l.unshift(entry); l.length = Math.min(l.length, 12); db.set("recent:" + kind, l);
-  if (discKey.startsWith(kind + "|")) discKey = "";
-}
-const rxBtn = (id) => `<button type="button" class="rx xb" data-rx="${esc(String(id))}" title="Remove from this list" aria-label="Remove from this list">${ic("close")}</button>`;
-function removeRecent(btn) {
-  const kind = active.page, card = btn.closest(".mcard"), grid = card.parentNode;
-  db.set("recent:" + kind, db.get("recent:" + kind, []).filter((x) => String(x.id) !== btn.dataset.rx));
-  card.remove();
-  if (!grid.querySelector(".mcard")) { grid.previousElementSibling?.remove(); grid.remove(); } // last one: drop the whole row + heading
-}
-function recentHtml(kind) {
-  const l = db.get("recent:" + kind, []); if (!l.length) return "";
-  const cards = l.map((x) => {
-    if (kind === "manga") { if (!x.m) return ""; mItems.set(x.m.id, x.m); return `<div class="mcard glow" data-id="${esc(x.m.id)}">${rxBtn(x.m.id)}<img loading="lazy" alt="" src="${mCover(x.m)}"><b>${esc(mTitle(x.m))}</b><small>${esc(x.label)}</small></div>`; }
-    return `<div class="mcard glow" data-id="${x.id}">${rxBtn(x.id)}<img loading="lazy" alt="" src="${img(x.cover)}"><b>${esc(x.title)}</b><small>${esc(x.label)}</small></div>`;
-  }).join("");
-  return `<h3>${kind === "anime" ? "Continue watching" : "Continue reading"}</h3><div class="grid">${cards}</div>`;
-}
+  ctx.render(html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : ""));
+} });
 
 // Session restore
 function persistSession() {
@@ -1011,7 +690,7 @@ function restoreSession() {
   if (!s.tabs.some((x) => x.url || (x.page && x.page !== "home"))) return;
   const first = tabs[0];
   for (const x of s.tabs.slice(0, 30)) {
-    const t = newTab(null, PAGE_TITLES[x.page] ? x.page : "home");
+    const t = newTab(null, PAGE_TITLES[x.page] && !(pages.get(x.page) && pages.get(x.page).action) ? x.page : "home");
     if (x.url && /^https?:/i.test(x.url)) { t.url = x.url; t.title = x.title || host(x.url); t.lazy = true; }
     t.pinned = !!x.pinned;
   }
@@ -1188,7 +867,195 @@ navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", (
   }
 });
 
+
+// ---------- plugins ----------
+// A plugin is one ES-module file kept in this browser (IndexedDB), added in Settings > Plugins. It gets an `api` object (see PLUGINS.md).
+// Everything a plugin registers is tracked per plugin, so it can be switched off, updated or removed without reloading.
+// Safe mode: open Cloudora with ?noplugins to start without loading any plugin (to recover from a broken one).
+const SAFE_MODE = /[?&]noplugins\b/.test(location.search);
+let coreVer = "";
+const netGate = (() => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); p.catch(() => {}); return { p, res, rej }; })();
+let bareClient = null;
+// fetch() through the same tunnel pages use: no CORS limits, and the server's real-browser TLS when that is on
+async function coreFetch(url, init = {}) {
+  await Promise.race([netGate.p, new Promise((_, rej) => setTimeout(() => rej(new Error("Cloudora isn't connected yet")), 20000))]);
+  bareClient ||= new BareMux.BareClient("/baremux/worker.js");
+  return bareClient.fetch(url, init);
+}
+
+// <img data-img="https://..."> : lazy-loaded; tries a direct CORS load first (page is cross-origin isolated, so plain
+// cross-site images are blocked) and falls back to fetching the bytes through the tunnel.
+function fillImg(img) {
+  const u = img.dataset.img; if (!u) return;
+  img.removeAttribute("data-img"); img.referrerPolicy = "no-referrer";
+  let tried = false;
+  img.addEventListener("error", async () => {
+    if (tried) return; tried = true;
+    try {
+      const r = await coreFetch(u, { headers: { accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" } });
+      if (!r.ok) throw new Error("status " + r.status);
+      const url = URL.createObjectURL(await r.blob());
+      img.removeAttribute("crossorigin"); img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true }); img.src = url;
+    } catch {}
+  }, { once: true });
+  img.crossOrigin = "anonymous"; img.src = u;
+}
+const imgIO = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { imgIO.unobserve(e.target); fillImg(e.target); } }), { rootMargin: "400px" }) : null;
+const queueImg = (i) => (imgIO ? imgIO.observe(i) : fillImg(i));
+const scanImgs = (n) => { if (n.nodeType !== 1) return; if (n.matches("img[data-img]")) queueImg(n); n.querySelectorAll("img[data-img]").forEach(queueImg); };
+new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(scanImgs))).observe($("#stage"), { childList: true, subtree: true });
+
+const loaded = new Map(), pluginErrors = new Map(); // id -> { row, off:[], settings } / id -> message
+const pluginDb = (id) => ({
+  get: (k, d) => db.get(`plugin:${id}:${k}`, d),
+  set: (k, v) => db.set(`plugin:${id}:${k}`, v),
+  remove: (k) => { try { localStorage.removeItem(`cloudora:plugin:${id}:${k}`); } catch {} },
+});
+function makeApi(rec) {
+  const id = rec.row.id, off = (fn) => rec.off.push(fn);
+  return {
+    id, version: 1, get coreVersion() { return coreVer; },
+    // add a page: { id, title, list(q, ctx), route?(parts, ctx), leave?(), open?(cardId), placeholder?, search?, nav? } or a link-style { id, title, action() }
+    page(def) {
+      if (!def || typeof def.id !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(def.id)) throw new Error("api.page: id must be lowercase letters, digits and dashes");
+      if (def.id === "home" || def.id === "history" || (pages.has(def.id) && pages.get(def.id).owner !== id)) throw new Error(`api.page: "${def.id}" is already taken`);
+      if (typeof def.title !== "string" || !def.title.trim()) throw new Error("api.page: title is required");
+      if (typeof def.list !== "function" && typeof def.action !== "function") throw new Error("api.page: give the page a list() or an action()");
+      pages.set(def.id, { ...def, owner: id }); PAGE_TITLES[def.id] = def.title.trim().slice(0, 24);
+      renderNav();
+      off(() => {
+        if (active && !active.url && active.page === def.id) leaveViews();
+        pages.delete(def.id); delete PAGE_TITLES[def.id]; if (discKey.startsWith(def.id + "|")) discKey = "";
+        for (const t of tabs) if (t.page === def.id) { t.page = "home"; t.title = PAGE_TITLES.home; }
+        renderNav(); render();
+      });
+    },
+    style(css) { const st = document.createElement("style"); st.dataset.plugin = id; st.textContent = String(css); document.head.appendChild(st); off(() => st.remove()); },
+    onClick(fn) { const h = { fn, owner: id }; clickHandlers.push(h); off(() => { const i = clickHandlers.indexOf(h); if (i >= 0) clickHandlers.splice(i, 1); }); },
+    onDispose: off,
+    settings(render) { rec.settings = render; }, // render(container): fill the plugin's section in Settings > Plugins
+    fetch: coreFetch,
+    storage: pluginDb(id),
+    navigate: nav, back: () => back(), open: openInTab, openTab: (u) => newTab(u), openPage, toast,
+    invalidate(pageId) { if (discKey.startsWith(pageId + "|")) discKey = ""; }, // re-draw this page's list next time it is shown
+    layers: { detail: $("#d-detail"), player: $("#player"), reader: $("#reader"), sync: syncView },
+    ui: { esc, ic, icons: Object.keys(ICONS), spinner, skeleton, closeButton: closeBtn, dropdown: openDD, closeDropdown: closeDD },
+  };
+}
+function stopPlugin(id) {
+  const rec = loaded.get(id); if (!rec) return;
+  loaded.delete(id);
+  for (const fn of rec.off.splice(0).reverse()) { try { fn(); } catch (err) { console.error("[cloudora] plugin cleanup failed", err); } }
+}
+async function startPlugin(row) {
+  pluginErrors.delete(row.id);
+  const rec = { row, off: [], settings: null };
+  loaded.set(row.id, rec);
+  try { await CloudoraPlugins.run(row, makeApi(rec)); }
+  catch (err) {
+    console.error(`[cloudora] plugin "${row.id}" failed to start`, err);
+    stopPlugin(row.id); pluginErrors.set(row.id, err.message || String(err));
+  }
+}
+async function loadAllPlugins() {
+  if (SAFE_MODE) { showNotice("Safe mode: plugins are switched off for this session."); return; }
+  let rows = [];
+  try { rows = await CloudoraPlugins.store.list(); } catch (err) { console.warn("[cloudora] couldn't read plugins", err); }
+  for (const row of rows) if (row.enabled) await startPlugin(row);
+  renderNav();
+}
+
+// ---- Settings > Plugins ----
+const plugMsg = (t, bad = false) => { const m = $("#plug-msg"); m.textContent = t; m.hidden = !t; m.classList.toggle("bad", bad); };
+async function drawPlugins() {
+  const box = $("#plug-list"); if (!box) return;
+  $("#plug-safe").hidden = !SAFE_MODE;
+  const rows = await CloudoraPlugins.store.list().catch(() => []);
+  $("#plug-mem").hidden = CloudoraPlugins.store.persistent;
+  if (!rows.length) { box.innerHTML = '<div class="srow"><div class="st"><b>No plugins installed</b><small>Add one below to unlock extra pages.</small></div></div>'; return; }
+  box.innerHTML = rows.map((r) => {
+    const m = r.manifest, err = pluginErrors.get(r.id), rec = loaded.get(r.id);
+    return `<div class="plug" data-id="${esc(r.id)}"><div class="plug-h"><div class="st"><b>${esc(m.name)} <span class="ver">${esc(m.version)}</span></b><small>${esc(m.description || "No description.")}</small>${err ? `<small class="err">Couldn't start: ${esc(err)}</small>` : ""}</div>
+      <button type="button" class="switch${r.enabled ? " on" : ""}" role="switch" aria-checked="${!!r.enabled}" data-pl="toggle" aria-label="Enable ${esc(m.name)}"></button></div>
+      <div class="plug-a">${rec && rec.settings ? '<button type="button" class="btn" data-pl="settings">Settings</button>' : ""}${r.url ? '<button type="button" class="btn" data-pl="update">Check for update</button>' : ""}<button type="button" class="btn danger" data-pl="remove">Remove</button></div>
+      <div class="plug-s" hidden></div></div>`;
+  }).join("");
+  box.querySelectorAll('[data-pl="remove"]').forEach((b) => armed(b, "Remove", () => removePlugin(b.closest(".plug").dataset.id)));
+}
+$("#plug-list").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-pl]"); if (!b || b.dataset.pl === "remove") return;
+  const card = b.closest(".plug"), id = card.dataset.id, rows = await CloudoraPlugins.store.list(), row = rows.find((r) => r.id === id); if (!row) return;
+  if (b.dataset.pl === "toggle") {
+    row.enabled = !row.enabled; await CloudoraPlugins.store.put(row);
+    if (row.enabled) await startPlugin(row); else stopPlugin(id);
+    return drawPlugins();
+  }
+  if (b.dataset.pl === "settings") {
+    const box = card.querySelector(".plug-s"), rec = loaded.get(id); if (!rec || !rec.settings) return;
+    box.hidden = !box.hidden; if (!box.hidden) { box.innerHTML = ""; try { rec.settings(box); } catch (err) { box.textContent = "Couldn't show settings: " + err.message; } }
+    return;
+  }
+  if (b.dataset.pl === "update") return installFromUrl(row.url, true);
+});
+async function removePlugin(id) {
+  stopPlugin(id); pluginErrors.delete(id);
+  await CloudoraPlugins.store.remove(id); drawPlugins(); toast("Plugin removed");
+}
+
+// install flow: read the manifest (no code runs), ask the user, store, then start it right away
+let pldResolve = null;
+function askInstall(m, old, source) {
+  const upd = !!old;
+  $("#pld-title").textContent = upd ? `Update ${m.name}?` : `Install ${m.name}?`;
+  $("#pld-info").innerHTML = `<div><b>${esc(m.name)}</b> <span class="ver">${esc(m.version)}</span>${upd ? ` <span class="muted">(you have ${esc(old.manifest.version)})</span>` : ""}</div>
+    ${m.description ? `<div class="muted">${esc(m.description)}</div>` : ""}${m.author ? `<div class="muted">By ${esc(m.author)}</div>` : ""}<div class="muted">From ${esc(source)}</div>`;
+  $("#pld-go").textContent = upd ? "Update" : "Install";
+  $("#pld").hidden = false; $("#pld-go").focus();
+  return new Promise((res) => { pldResolve = res; });
+}
+const closePld = (ok) => { $("#pld").hidden = true; if (pldResolve) { pldResolve(ok); pldResolve = null; } };
+$("#pld-go").onclick = () => closePld(true); $("#pld-cancel").onclick = () => closePld(false);
+$("#pld").addEventListener("mousedown", (e) => { if (e.target.id === "pld") closePld(false); });
+async function installFromCode(code, source, url = "") {
+  const p = CloudoraPlugins.parseManifest(code);
+  if (!p.ok) return plugMsg(p.error, true);
+  plugMsg("");
+  const old = (await CloudoraPlugins.store.list()).find((r) => r.id === p.manifest.id);
+  if (old && old.code === code) return plugMsg(`${p.manifest.name} ${p.manifest.version} is already installed and up to date.`);
+  if (!(await askInstall(p.manifest, old, source))) return;
+  const row = { id: p.manifest.id, manifest: p.manifest, code, enabled: true, source: url ? "url" : "file", url, installedAt: old ? old.installedAt : Date.now(), updatedAt: Date.now() };
+  stopPlugin(row.id);
+  await CloudoraPlugins.store.put(row);
+  await startPlugin(row);
+  drawPlugins();
+  const err = pluginErrors.get(row.id);
+  if (err) plugMsg(`${row.manifest.name} was saved but couldn't start: ${err}`, true);
+  else { plugMsg(""); toast(`${row.manifest.name} ${old ? "updated" : "installed"}`); }
+}
+async function installFromUrl(url, quiet = false) {
+  let u; try { u = new URL(url.trim()); if (!/^https?:$/.test(u.protocol)) throw 0; } catch { return plugMsg("Enter a full http(s) address.", true); }
+  plugMsg("Downloading…");
+  try {
+    const r = await coreFetch(u.href, { headers: { accept: "text/javascript,application/javascript,text/plain,*/*" } });
+    if (!r.ok) throw new Error("the server answered " + r.status);
+    const code = await r.text();
+    await installFromCode(code, u.host, u.href);
+    if (plugMsg && $("#plug-msg").textContent === "Downloading…") plugMsg("");
+  } catch (err) { plugMsg("Couldn't download the plugin: " + err.message, true); }
+}
+$("#plug-file").onclick = () => $("#plug-file-in").click();
+$("#plug-file-in").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.size > CloudoraPlugins.MAX_CODE) return plugMsg("That file is larger than 1.5 MB.", true);
+  installFromCode(await f.text(), f.name);
+};
+$("#plug-url-go").onclick = () => { const v = $("#plug-url").value.trim(); if (v) installFromUrl(v).then(() => { if (!$("#plug-msg").classList.contains("bad")) $("#plug-url").value = ""; }); };
+$("#plug-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#plug-url-go").click(); } });
+$("#plug-paste-go").onclick = () => { const v = $("#plug-code").value; if (v.trim()) installFromCode(v, "pasted code").then(() => { if (!$("#plug-msg").classList.contains("bad")) $("#plug-code").value = ""; }); };
+
 applyTheme();
 if (matchMedia("(max-width:720px)").matches) el.app.classList.add("collapsed");
+renderNav();
 newTab();
-boot().then(restoreSession).then(() => { const u = launchUrl(); if (u) newTab(u); }).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });
+const pluginsReady = loadAllPlugins();
+boot().then(() => pluginsReady).then(restoreSession).then(() => { const u = launchUrl(); if (u) newTab(u); }).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { netGate.rej(err); el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });

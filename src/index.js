@@ -1,3 +1,4 @@
+import "./env.js"; // must stay first: loads .env before the other modules read process.env
 import { createServer } from "node:http";
 import { createReadStream, statSync, readFileSync } from "node:fs";
 import { createGzip, gzipSync } from "node:zlib";
@@ -56,60 +57,8 @@ function findFile(pathname) {
   return null;
 }
 
-// --- AniList data for the Anime/Manga pages (cached, same-origin so the browser needs no CORS) ---
-const ANILIST = process.env.ANILIST_URL || "https://graphql.anilist.co";
+// Small in-memory cache for the address-bar suggestions
 const cache = new Map();
-async function readBody(req, max = 8192) {
-  const parts = []; let n = 0;
-  for await (const c of req) { n += c.length; if (n > max) throw new Error("too large"); parts.push(c); }
-  return Buffer.concat(parts);
-}
-async function anilist(req, res) {
-  const json = { "Content-Type": "application/json" };
-  try {
-    const body = await readBody(req), key = body.toString();
-    const hit = cache.get(key);
-    if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
-    JSON.parse(key);
-    const r = await upstream(ANILIST, { method: "POST", headers: { ...json, Accept: "application/json" }, body });
-    const data = r.body.toString("utf8");
-    if (r.ok) { if (cache.size > 300) cache.clear(); cache.set(key, { data, exp: Date.now() + 5 * 60e3 }); }
-    res.writeHead(r.status, json); res.end(data);
-  } catch { res.writeHead(502, json); res.end('{"errors":[{"message":"upstream error"}]}'); }
-}
-// Generic cached JSON relay (MangaDex and the optional streaming source API)
-async function relay(res, url, ttl = 300e3, extra = {}) {
-  const json = { "Content-Type": "application/json" };
-  try {
-    const hit = cache.get(url);
-    if (hit && hit.exp > Date.now()) { res.writeHead(200, json); return res.end(hit.data); }
-    const r = await upstream(url, { headers: { Accept: "application/json", ...extra } });
-    const data = r.body.toString("utf8");
-    if (r.ok && ttl) { if (cache.size > 300) cache.clear(); cache.set(url, { data, exp: Date.now() + ttl }); }
-    res.writeHead(r.status, json); res.end(data);
-  } catch { res.writeHead(502, json); res.end('{"result":"error","errors":[{"title":"upstream error"}]}'); }
-}
-const MANGADEX = (process.env.MANGADEX_URL || process.env.MANGA_API_URL || "https://api.mangadex.org").replace(/\/+$/, "");
-// Optional licensed anime source API (set STREAM_API on the server; see README for the JSON contract)
-const STREAM_API = (process.env.STREAM_API || process.env.ANIME_API_URL || "").replace(/\/+$/, "");
-const STREAM_HEADERS = (process.env.STREAM_API_KEY || process.env.ANIME_API_KEY)
-  ? { Authorization: "Bearer " + (process.env.STREAM_API_KEY || process.env.ANIME_API_KEY) }
-  : {};
-const MD_PATH = /^\/(manga|manga\/[0-9a-f-]{36}|manga\/[0-9a-f-]{36}\/feed|at-home\/server\/[0-9a-f-]{36})$/;
-// Cover/thumbnail art only, from these hosts
-const IMG_HOSTS = ["anilist.co", "mangadex.org", "mangadex.network"];
-const okHost = (h) => IMG_HOSTS.some((d) => h === d || h.endsWith("." + d));
-async function image(res, u) {
-  try {
-    const t = new URL(u);
-    if (t.protocol !== "https:" || !okHost(t.hostname)) throw 0;
-    const r = await upstream(t.href, { headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" } });
-    const type = r.headers.get("content-type") || "";
-    if (!r.ok || !type.startsWith("image/") || !okHost(new URL(r.url).hostname)) throw 0;
-    res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
-    res.end(r.body);
-  } catch { res.writeHead(404); res.end(); }
-}
 
 // Search-as-you-type suggestions for the address bar (DuckDuckGo's public autocomplete, cached, same-origin)
 async function suggest(res, q) {
@@ -163,26 +112,8 @@ const server = createServer((req, res) => {
   res.setHeader("Vary", "User-Agent");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/proxy") return impersonator.handle(req, res);
-  if (u.pathname === "/api/anilist" && req.method === "POST") return anilist(req, res);
-  if (u.pathname === "/api/config") return impersonateOn.then((imp) => { res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ stream: !!STREAM_API, official: /^(1|true)$/i.test(process.env.STREAM_API_OFFICIAL || ""), manga: true, anilist: true, impersonate: imp, version: VERSION })); });
-  if (u.pathname === "/api/health") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, stream: !!STREAM_API, manga: true, adblock: true })); }
-  if (STREAM_API && req.method === "GET" && (u.pathname === "/api/stream/episodes" || u.pathname === "/api/stream/sources")) {
-    const q = new URLSearchParams();
-    for (const k of ["anilist_id", "episode"]) {
-      const v = u.searchParams.get(k);
-      if (v === null) continue;
-      if (!/^\d{1,7}$/.test(v)) { res.writeHead(400); return res.end(); }
-      q.set(k, v);
-    }
-    const eps = u.pathname.endsWith("episodes");
-    return relay(res, `${STREAM_API}/${eps ? "episodes" : "sources"}?${q}`, eps ? 60e3 : 0, STREAM_HEADERS);
-  }
-  if (req.method === "GET" && u.pathname.startsWith("/api/md/")) {
-    const p = u.pathname.slice(7);
-    if (MD_PATH.test(p)) return relay(res, MANGADEX + p + u.search, p.startsWith("/at-home") ? 0 : 300e3);
-    res.writeHead(404); return res.end();
-  }
-  if ((u.pathname === "/img" || u.pathname === "/api/md-image") && req.method === "GET") return image(res, u.searchParams.get("u") || "");
+  if (u.pathname === "/api/config") return impersonateOn.then((imp) => { res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ impersonate: imp, version: VERSION })); });
+  if (u.pathname === "/api/health") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, adblock: true })); }
   if (u.pathname === "/api/suggest" && req.method === "GET") return suggest(res, u.searchParams.get("q") || "");
   let file = null;
   try { file = findFile(decodeURIComponent(new URL(req.url, "http://x").pathname)); } catch {}

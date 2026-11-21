@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "build": "echo \"No build step needed\"",
-    "test": "node --test tests/engine.test.mjs tests/provider.test.mjs tests/upstream.test.mjs tests/impersonate.test.mjs tests/pwa.test.mjs",
+    "test": "node --test tests/engine.test.mjs tests/plugins.test.mjs tests/upstream.test.mjs tests/impersonate.test.mjs tests/pwa.test.mjs",
     "build-filters": "node scripts/build-filters.mjs",
     "update-filters": "node scripts/build-filters.mjs --download"
   },

@@ -1,4 +1,4 @@
-// Server-side HTTP client for upstream APIs (AniList, MangaDex, image hosts, the optional source API).
+// Server-side HTTP client for upstream requests (address-bar suggestions, the /api/proxy fallback).
 //
 // 1. Always sends a real browser User-Agent (not "node"/"Cloudora/x"), because several hosts reject or
 //    throttle unknown agents.

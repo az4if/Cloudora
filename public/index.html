@@ -22,7 +22,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
   <link rel="stylesheet" href="style.css" />
   <script src="/scram/scramjet.all.js"></script>
   <script src="/baremux/index.js"></script>
-  <script src="/provider.js"></script>
+  <script src="plugins.js"></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -30,7 +30,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
   <aside id="sidebar">
     <button type="button" class="brand" id="brand" title="Home" aria-label="Cloudora home"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" />Cloudora</button>
     <button id="new-tab" data-ic="plus">New tab</button>
-    <nav id="nav"><button data-page="home">Home</button><button data-page="anime">Anime</button><button data-page="manga">Manga</button><button data-page="history">History</button></nav>
+    <nav id="nav"></nav>
     <div id="tablist"></div>
     <div class="side-foot"><span id="status">Connecting…</span><button class="ghost" id="open-settings" title="Settings" data-ic="sliders"></button></div>
   </aside>
@@ -82,6 +82,14 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
       <div class="mact"><button type="button" class="btn danger" id="sc-del">Delete</button><span class="sp"></span><button type="button" class="btn" id="sc-cancel">Cancel</button><button class="btn pri" id="sc-save">Save</button></div>
     </form>
   </div>
+  <div id="pld" class="modal" hidden>
+    <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="pld-title">
+      <h3 id="pld-title">Install plugin?</h3>
+      <div id="pld-info" class="pld-info"></div>
+      <p class="pld-warn">This plugin will run with full access to Cloudora, including your history, bookmarks and settings, and can make requests through your server. Only continue if you trust where it came from.</p>
+      <div class="mact"><span class="sp"></span><button type="button" class="btn" id="pld-cancel">Cancel</button><button type="button" class="btn pri" id="pld-go">Install</button></div>
+    </div>
+  </div>
   <div id="toast" hidden></div>
   <div id="settings" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="set-title">
@@ -91,6 +99,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
         <button type="button" role="tab" data-tab="search" data-ic="search"><span>Search</span></button>
         <button type="button" role="tab" data-tab="privacy" data-ic="shield"><span>Privacy</span></button>
         <button type="button" role="tab" data-tab="browser" data-ic="globe"><span>Browser</span></button>
+        <button type="button" role="tab" data-tab="plugins" data-ic="puzzle"><span>Plugins</span></button>
         <button type="button" role="tab" data-tab="about" data-ic="info"><span>About</span></button>
       </nav>
       <button type="button" class="xb md" id="close-settings" data-ic="close" title="Close (Esc)" aria-label="Close settings"></button>
@@ -155,6 +164,22 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
           </div>
         </section>
 
+        <section class="pane" role="tabpanel" data-pane="plugins" hidden>
+          <h3>Plugins</h3><p class="lede">Add extra pages and features, like anime or manga. Plugins are stored in this browser only.</p>
+          <div class="note" id="plug-safe" hidden>Safe mode: plugins are switched off for this session. Open Cloudora without <code>?noplugins</code> to load them again.</div>
+          <div class="note" id="plug-mem" hidden>This browser blocked storage, so plugins will be forgotten when you close the tab.</div>
+          <h5>Installed</h5>
+          <div class="group" id="plug-list"></div>
+          <h5>Add a plugin</h5>
+          <div class="group pad plug-add">
+            <div class="plug-row"><button type="button" class="btn" id="plug-file">Choose file…</button><input type="file" id="plug-file-in" accept=".js,.mjs,text/javascript" hidden /></div>
+            <div class="plug-row"><input id="plug-url" placeholder="https://example.com/name.plugin.js" spellcheck="false" autocomplete="off" inputmode="url" aria-label="Plugin address" /><button type="button" class="btn" id="plug-url-go">Install</button></div>
+            <details class="plug-paste"><summary>Paste code instead</summary><textarea id="plug-code" spellcheck="false" placeholder="/* cloudora-plugin { &quot;id&quot;: &quot;…&quot; } */"></textarea><button type="button" class="btn" id="plug-paste-go">Install</button></details>
+            <div class="plug-msg" id="plug-msg" role="status" hidden></div>
+            <small class="muted">A plugin runs with full access to Cloudora, including your history and settings. Only install plugins you trust.</small>
+          </div>
+        </section>
+
         <section class="pane" role="tabpanel" data-pane="about" hidden>
           <div class="about"><img class="logo-w" src="/logo-white.png" alt="" /><img class="logo-b" src="/logo-black.png" alt="" /><div><h3>Cloudora</h3><small class="muted" id="ver">Version 0.7.1</small></div></div>
           <p class="lede">Browse beyond the walls. Pages are fetched by your server and rendered with Scramjet.</p>
@@ -175,7 +200,7 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
             <dt><kbd>Alt</kbd><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>Zoom in / out / reset</dd>
             <dt><kbd>Esc</kbd></dt><dd>Close the top layer</dd>
           </dl></div>
-          <p class="credit">Built on Scramjet, bare-mux, libcurl.js, wisp-js and hls.js. Anime data from AniList.</p>
+          <p class="credit">Built on Scramjet, bare-mux, libcurl.js and wisp-js.</p>
         </section>
       </div>
     </div>
