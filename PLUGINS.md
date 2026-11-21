@@ -4,6 +4,8 @@ Cloudora's core is just the browser. Everything else (extra pages, sidebar butto
 
 > A plugin runs with full access to Cloudora (your history, bookmarks, settings, and requests through your server). Only install plugins from sources you trust. If one breaks the app, open Cloudora with `?noplugins` (for example `https://your-host/?noplugins`) to start with all plugins off, then remove it.
 
+Ready-made plugins: [az4if/Cloudora-plugins](https://github.com/az4if/Cloudora-plugins).
+
 ## Installing
 
 Settings → Plugins, then one of:

@@ -55,7 +55,7 @@ Copy `.env.example` to `.env` and edit it, or set the variables in your host's d
 ## Plugins
 
 Cloudora's core is just the browser. Add extra pages and features under **Settings → Plugins** (file, address or pasted code); it stays in that browser, can be switched off or removed any time, and `?noplugins` starts with all of them off.
-Plugins run with full access to the app, so only install ones you trust. To write your own, see [PLUGINS.md](PLUGINS.md).
+Plugins run with full access to the app, so only install ones you trust. Ready-made plugins live in [Cloudora-plugins](https://github.com/az4if/Cloudora-plugins); to write your own, see [PLUGINS.md](PLUGINS.md).
 
 ## How it works
 
