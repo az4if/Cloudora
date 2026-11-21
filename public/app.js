@@ -188,7 +188,8 @@ function render() {
   const blank = !active.url;
   el.home.hidden = !(blank && active.page === "home");
   el.disc.hidden = !(blank && active.page !== "home");
-  if (!el.home.hidden) renderTiles();
+  if (!el.home.hidden) { renderTiles(); if (!wasHome) for (const w of widgets.values()) drawWidget(w); }
+  wasHome = !el.home.hidden;
   if (!el.disc.hidden) {
     if (!routing && !discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; leaveViews(); }
     showDiscover(active.page, $("#d-q").value.trim());
@@ -490,6 +491,8 @@ const closeBtn = () => `<button type="button" class="xb md dx" title="Close" ari
 
 // Pages: "history" is built in, plugins register more (api.page). A page is { id, title, list(q, ctx), route?(parts, ctx), leave?(), open?(id), action?() }.
 const pages = new Map();
+const widgets = new Map(); // new-tab cards added by plugins: "plugin:widget" -> { def, box, body, order }
+let wasHome = false;
 let discKey = "", discLoad = Promise.resolve();
 function showDiscover(page, q = "") {
   const key = page + "|" + q, pg = pages.get(page);
@@ -499,7 +502,7 @@ function showDiscover(page, q = "") {
   $("#d-title").textContent = PAGE_TITLES[page]; $("#d-q").placeholder = pg.placeholder || "Search " + PAGE_TITLES[page].toLowerCase() + "…";
   $("#d-form").hidden = pg.search === false;
   $("#d-body").innerHTML = spinner("Loading " + PAGE_TITLES[page].toLowerCase() + "…") + skeleton();
-  const ctx = { q, body: $("#d-body"), current: () => key === discKey, render(html) { if (key === discKey) $("#d-body").innerHTML = html; } };
+  const ctx = { q, body: $("#d-body"), current: () => key === discKey, stale: () => key !== discKey, render(html) { if (key === discKey) $("#d-body").innerHTML = html; } };
   return (discLoad = (async () => {
     try { await pg.list(q, ctx); }
     catch (err) { if (key === discKey) { discKey = ""; $("#d-body").innerHTML = `<p class="muted">Couldn't load this page (${esc(err.message)}).</p>`; } }
@@ -880,7 +883,11 @@ let bareClient = null;
 async function coreFetch(url, init = {}) {
   await Promise.race([netGate.p, new Promise((_, rej) => setTimeout(() => rej(new Error("Cloudora isn't connected yet")), 20000))]);
   bareClient ||= new BareMux.BareClient("/baremux/worker.js");
-  return bareClient.fetch(url, init);
+  // right after the transport is set, libcurl may still be loading its wasm: wait for it instead of failing
+  for (let i = 0; ; i++) {
+    try { return await bareClient.fetch(url, init); }
+    catch (err) { if (i >= 12 || !/wasm not loaded|load_wasm|not ready/i.test(String(err && err.message))) throw err; await new Promise((r) => setTimeout(r, 400)); }
+  }
 }
 
 // <img data-img="https://..."> : lazy-loaded; tries a direct CORS load first (page is cross-origin isolated, so plain
@@ -911,10 +918,26 @@ const pluginDb = (id) => ({
   set: (k, v) => db.set(`plugin:${id}:${k}`, v),
   remove: (k) => { try { localStorage.removeItem(`cloudora:plugin:${id}:${k}`); } catch {} },
 });
+// ---- plugin hooks that reach outside the app UI ----
+const injects = new Map(); // plugin id -> [{ id, matches, css, js }]
+let injectTimer = 0;
+function syncInject() { // tell the service worker which CSS/JS to add to proxied pages (also sent empty in safe mode)
+  clearTimeout(injectTimer);
+  injectTimer = setTimeout(() => {
+    const rules = [].concat(...injects.values()).slice(0, 200);
+    let size = 0; for (const r of rules) size += r.css.length + r.js.length;
+    swPost({ cloudora: "inject", rules: size > 1e6 ? [] : rules });
+  }, 30);
+}
+function placeWidgets() { const host = $("#widgets"); for (const w of [...widgets.values()].sort((a, b) => a.order - b.order)) host.appendChild(w.box); }
+async function drawWidget(w) {
+  try { await w.def.render(w.body); }
+  catch (err) { console.error("[cloudora] widget failed", err); w.body.innerHTML = `<span class="muted">${esc(err.message || "This widget failed")}</span>`; }
+}
 function makeApi(rec) {
   const id = rec.row.id, off = (fn) => rec.off.push(fn);
   return {
-    id, version: 1, get coreVersion() { return coreVer; },
+    id, version: 2, get coreVersion() { return coreVer; },
     // add a page: { id, title, list(q, ctx), route?(parts, ctx), leave?(), open?(cardId), placeholder?, search?, nav? } or a link-style { id, title, action() }
     page(def) {
       if (!def || typeof def.id !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(def.id)) throw new Error("api.page: id must be lowercase letters, digits and dashes");
@@ -930,6 +953,31 @@ function makeApi(rec) {
         renderNav(); render();
       });
     },
+    // v2: a card on the new-tab page. { id, title?, render(body) }. render runs when the widget is added and each time the new-tab page is shown, so cache what is slow.
+    widget(def) {
+      if (!def || typeof def.id !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(def.id)) throw new Error("api.widget: id must be lowercase letters, digits and dashes");
+      if (typeof def.render !== "function") throw new Error("api.widget: give it a render(body) function");
+      const key = id + ":" + def.id;
+      if (widgets.has(key)) throw new Error(`api.widget: "${def.id}" is already added`);
+      const box = document.createElement("div"); box.className = "widget"; box.dataset.plugin = id;
+      if (def.title) box.innerHTML = `<h4>${esc(String(def.title).slice(0, 40))}</h4>`;
+      const body = document.createElement("div"); box.appendChild(body);
+      const w = { def, box, body, order: Number(def.order) || 0 };
+      widgets.set(key, w); placeWidgets(); drawWidget(w);
+      off(() => { widgets.delete(key); box.remove(); });
+    },
+    // v2: CSS and/or JavaScript added to every proxied page on matching sites. { matches: ["example.com", "*.example.com", "*"], css?, js? }
+    // The script runs at the start of <head>, in the page, once per frame: wait for DOMContentLoaded before touching the document.
+    inject(rule) {
+      if (!rule || !Array.isArray(rule.matches) || !rule.matches.length || rule.matches.length > 50 || !rule.matches.every((m) => typeof m === "string" && /^(\*|(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?)$/i.test(m))) throw new Error('api.inject: matches must be a list of "*", "example.com" or "*.example.com"');
+      const css = rule.css == null ? "" : String(rule.css), js = rule.js == null ? "" : String(rule.js);
+      if (!css && !js) throw new Error("api.inject: give it css and/or js");
+      if (css.length > 200e3 || js.length > 200e3) throw new Error("api.inject: css and js are limited to 200 KB each");
+      const r = { id, matches: rule.matches.map((m) => m.toLowerCase()), css, js };
+      (injects.get(id) || injects.set(id, []).get(id)).push(r); syncInject();
+      const remove = () => { const l = injects.get(id) || []; const i = l.indexOf(r); if (i >= 0) l.splice(i, 1); if (!l.length) injects.delete(id); syncInject(); };
+      off(remove); return remove; // call the returned function to take this rule away again
+    },
     style(css) { const st = document.createElement("style"); st.dataset.plugin = id; st.textContent = String(css); document.head.appendChild(st); off(() => st.remove()); },
     onClick(fn) { const h = { fn, owner: id }; clickHandlers.push(h); off(() => { const i = clickHandlers.indexOf(h); if (i >= 0) clickHandlers.splice(i, 1); }); },
     onDispose: off,
@@ -937,6 +985,10 @@ function makeApi(rec) {
     fetch: coreFetch,
     storage: pluginDb(id),
     navigate: nav, back: () => back(), open: openInTab, openTab: (u) => newTab(u), openPage, toast,
+    refresh(pageId) { // v2: re-draw the page right now if it is the one showing
+      discKey = "";
+      if (active && !active.url && active.page === pageId && !el.disc.hidden && !routing) showDiscover(pageId, $("#d-q").value.trim());
+    },
     invalidate(pageId) { if (discKey.startsWith(pageId + "|")) discKey = ""; }, // re-draw this page's list next time it is shown
     layers: { detail: $("#d-detail"), player: $("#player"), reader: $("#reader"), sync: syncView },
     ui: { esc, ic, icons: Object.keys(ICONS), spinner, skeleton, closeButton: closeBtn, dropdown: openDD, closeDropdown: closeDD },
@@ -958,11 +1010,11 @@ async function startPlugin(row) {
   }
 }
 async function loadAllPlugins() {
-  if (SAFE_MODE) { showNotice("Safe mode: plugins are switched off for this session."); return; }
+  if (SAFE_MODE) { showNotice("Safe mode: plugins are switched off for this session."); syncInject(); return; }
   let rows = [];
   try { rows = await CloudoraPlugins.store.list(); } catch (err) { console.warn("[cloudora] couldn't read plugins", err); }
   for (const row of rows) if (row.enabled) await startPlugin(row);
-  renderNav();
+  renderNav(); syncInject();
 }
 
 // ---- Settings > Plugins ----

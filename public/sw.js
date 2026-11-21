@@ -11,9 +11,9 @@ const idb = (mode, fn) => new Promise((res, rej) => {
   o.onerror = () => rej(o.error);
   o.onsuccess = () => { const r = fn(o.result.transaction("s", mode).objectStore("s")); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); };
 });
-let adblock = true, allow = [];
-const ready = Promise.all([idb("readonly", (s) => s.get("adblock")), idb("readonly", (s) => s.get("allow"))])
-  .then(([a, l]) => { if (a !== undefined) adblock = a; if (Array.isArray(l)) allow = l; }).catch(() => {});
+let adblock = true, allow = [], inject = []; // inject: per-site CSS/JS that plugins asked for
+const ready = Promise.all([idb("readonly", (s) => s.get("adblock")), idb("readonly", (s) => s.get("allow")), idb("readonly", (s) => s.get("inject"))])
+  .then(([a, l, i]) => { if (a !== undefined) adblock = a; if (Array.isArray(l)) allow = l; if (Array.isArray(i)) inject = i; }).catch(() => {});
 const save = (k, v) => idb("readwrite", (s) => s.put(v, k)).catch(() => {});
 
 // ---------- filter lists (loaded once per worker start) ----------
@@ -92,6 +92,7 @@ self.addEventListener("message", (e) => {
   const d = e.data; if (!d || !d.cloudora) return;
   if (d.cloudora === "adblock") { adblock = !!d.on; save("adblock", adblock); }
   else if (d.cloudora === "allow") { allow = Array.isArray(d.hosts) ? d.hosts.slice(0, 500) : []; save("allow", allow); }
+  else if (d.cloudora === "inject") { inject = Array.isArray(d.rules) ? d.rules.slice(0, 200) : []; save("inject", inject); }
   else if (d.cloudora === "allow-add" && typeof d.host === "string") { if (!allow.includes(d.host)) allow.push(d.host); save("allow", allow); toApp({ cloudora: "allow", hosts: allow }); }
 });
 
@@ -131,10 +132,23 @@ const POPUP_GUARD = "(function(){var o=window.open;window.open=function(){try{if
 // proxied pages: thin scrollbars (no up/down arrow buttons); :where() keeps it weaker than any rule the site sets itself
 const SCROLL_TAG = '<style id="cloudora-scroll">:where(*){scrollbar-width:thin}::-webkit-scrollbar-button{display:none;width:0;height:0}</style>';
 const SCROLL_CSS = enc.encode(SCROLL_TAG);
+// plugin rules: { id, matches: ["*", "example.com", "*.example.com"], css, js }. "example.com" also covers its subdomains.
+const siteMatch = (host, p) => { p = String(p).toLowerCase(); if (p === "*") return true; if (p.startsWith("*.")) p = p.slice(2); return host === p || host.endsWith("." + p); };
+function pluginTags(host) {
+  let out = "";
+  for (const r of inject) {
+    if (!r || !Array.isArray(r.matches) || !r.matches.some((p) => siteMatch(host, p))) continue;
+    const id = String(r.id || "").replace(/[^a-z0-9-]/g, "");
+    if (r.css) out += '<style data-cloudora-plugin="' + id + '">' + String(r.css).replace(/<\/style/gi, "<\\/style") + "</style>";
+    if (r.js) out += '<script data-cloudora-plugin="' + id + '">try{' + String(r.js).replace(/<\/script/gi, "<\\/script") + "\n}catch(e){console.error('[cloudora plugin " + id + "]',e)}</script>";
+  }
+  return out;
+}
 async function decorate(res, pageUrl, scrollOnly = false) {
   const host = hostOf(pageUrl);
   if (!host || res.status !== 200 || !res.body || !/text\/html/i.test(res.headers.get("content-type") || "")) return res;
-  if (scrollOnly || allowed(host)) return injectHead(res, SCROLL_CSS);
+  const extra = pluginTags(host);
+  if (scrollOnly || allowed(host)) return injectHead(res, extra ? cat(SCROLL_CSS, enc.encode(extra)) : SCROLL_CSS);
   await cosReady();
   let css = "", calls = [];
   if (cos) ({ css, calls } = cos.forHost(host));
@@ -142,7 +156,7 @@ async function decorate(res, pageUrl, scrollOnly = false) {
   if (calls.length && runtimeSrc) js += "try{" + runtimeSrc + "(" + JSON.stringify(calls).replace(/</g, "\\u003c") + ")}catch(e){}";
   const html = SCROLL_TAG + '<link rel="stylesheet" href="' + self.location.origin + '/adblock/generic.css">' +
     (css ? '<style id="cloudora-cosmetic">' + css.replace(/<\//g, "<\\/") + "</style>" : "") +
-    '<script id="cloudora-scriptlets">' + js.replace(/<\/script/gi, "<\\/script") + "</script>";
+    '<script id="cloudora-scriptlets">' + js.replace(/<\/script/gi, "<\\/script") + "</script>" + extra;
   return injectHead(res, enc.encode(html));
 }
 

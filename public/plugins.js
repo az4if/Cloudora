@@ -10,7 +10,7 @@
 //
 // See PLUGINS.md for the API. This file has no dependency on the app, so it can be unit tested in Node.
 (() => {
-  const API_VERSION = 1;
+  const API_VERSION = 2;
   const MAX_CODE = 1.5 * 1024 * 1024;
   const ID_RE = /^[a-z0-9][a-z0-9-]{1,31}$/;
   const VER_RE = /^\d+\.\d+\.\d+([-+][\w.-]+)?$/;

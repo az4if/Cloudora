@@ -336,6 +336,11 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 @media (hover:none){.xb:not(.md){width:28px;height:28px}}
 
 /* ---- 0.8: plugins ---- */
+.widgets{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;width:min(660px,100%)}
+.widgets:empty{display:none}
+.widget{padding:14px 16px;border:1px solid var(--border);border-radius:16px;background:var(--surface2);min-width:0}
+.widget>h4{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.widget .muted{color:var(--muted)}
 #d-form[hidden]{display:none}
 .note{margin:0 0 12px;padding:10px 14px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--accent) 10%,transparent);font-size:13px}
 .plug{display:grid;gap:10px;padding:14px 18px}.plug+.plug{border-top:1px solid var(--border)}
@@ -350,6 +355,14 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 .plug-row input:focus,.plug-s input:focus,.plug-paste textarea:focus{border-color:var(--accent)}
 .plug-paste summary{cursor:pointer;color:var(--muted);font-size:13px}.plug-paste[open] summary{margin-bottom:8px}
 .plug-paste textarea{display:block;width:100%;min-height:120px;margin-bottom:8px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+/* form kit for a plugin's block in Settings > Plugins */
+.fld{display:grid;gap:6px;font-size:13px}.fld>small{color:var(--muted);font-size:12px;line-height:1.35}
+.plug-s select,.plug-s textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);outline:none;font:inherit}
+.plug-s select:focus,.plug-s textarea:focus{border-color:var(--accent)}
+.plug-s textarea{min-height:90px;resize:vertical;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+.plug-s input[type=checkbox]{flex:none;width:16px;height:16px;padding:0;accent-color:var(--accent)}
+.fld.chk{display:flex;align-items:center;gap:8px}
+.plug-s .chip.on{border-color:var(--accent);color:var(--text)}
 .plug-msg{padding:8px 12px;border-radius:10px;background:var(--surface2);font-size:13px}.plug-msg.bad{color:#e5484d;border:1px solid #e5484d55}
 .pld-info{display:grid;gap:3px;font-size:13px}.pld-info .ver{color:var(--muted)}
 .pld-warn{margin:0;padding:10px 12px;border:1px solid #d99a1f55;border-radius:10px;background:#d99a1f1f;font-size:12.5px}
