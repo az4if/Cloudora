@@ -157,11 +157,12 @@ function select(tab) {
   render();
 }
 
+const tabCount = () => { $("#toggle").dataset.n = tabs.length > 99 ? "99+" : tabs.length; }; // number shown on the phone "Tabs" button
 function closeTab(tab) {
   const i = tabs.indexOf(tab);
   if (tab.url || tab.page !== "home") closed.unshift({ url: tab.url, page: tab.page, title: tab.title, pinned: tab.pinned });
   closed.length = Math.min(closed.length, 15);
-  tabs.splice(i, 1); tab.row.remove(); tab.frame?.frame.remove();
+  tabs.splice(i, 1); tab.row.remove(); tab.frame?.frame.remove(); tabCount();
   if (!tabs.length) newTab(); else if (tab === active) select(tabs[Math.max(0, i - 1)]);
   saveSession();
 }
@@ -185,6 +186,7 @@ function render() {
     t.row.querySelector(".x").onclick = (e) => { e.stopPropagation(); closeTab(t); };
     if (t.frame) t.frame.frame.classList.toggle("active", t === active);
   }
+  tabCount();
   const blank = !active.url;
   el.home.hidden = !(blank && active.page === "home");
   el.disc.hidden = !(blank && active.page !== "home");
@@ -295,7 +297,8 @@ function netState() { if (!navigator.onLine) showNotice(OFFLINE_MSG); else if (e
 addEventListener("online", netState); addEventListener("offline", netState); netState();
 
 // ---------- layout: toolbar position (top/bottom) and address bar visibility; "auto" = bottom bar, no address bar on phones ----------
-const phoneMQ = matchMedia("(max-width:720px)");
+// phone layout: narrow screens, and landscape phones (short + touch). There the side panel becomes a "Tabs" sheet.
+const phoneMQ = matchMedia("(max-width:720px), (max-height:480px) and (pointer:coarse)");
 const LAYOUT = { toolbar: ["auto", "top", "bottom"], addrbar: ["auto", "show", "hide"] };
 function applyLayout() {
   const phone = phoneMQ.matches;
@@ -305,7 +308,9 @@ function applyLayout() {
   el.app.dataset.addr = prefs.addrbar === "auto" ? (phone ? "hide" : "show") : prefs.addrbar;
 }
 const barBottom = () => el.app.dataset.bar === "bottom";
-phoneMQ.addEventListener("change", applyLayout);
+const homeHint = () => { const q = $("#home-q"); if (q) q.placeholder = phoneMQ.matches ? "Search or enter address" : "Search the web or type a URL"; };
+phoneMQ.addEventListener("change", () => { applyLayout(); homeHint(); if (phoneMQ.matches) el.app.classList.add("collapsed"); });
+homeHint();
 applyLayout();
 // with the address bar hidden, Alt+L / the menu show it for one entry (the other toolbar buttons step aside)
 function openAddress() {
@@ -325,6 +330,9 @@ $("#forward").onclick = () => active.frame?.forward();
 $("#reload").onclick = () => { if (active.frame) { active.loading = true; active.frame.reload(); render(); } };
 $("#new-tab").onclick = () => newTab();
 $("#toggle").onclick = () => el.app.classList.toggle("collapsed");
+$("#scrim").onclick = () => el.app.classList.add("collapsed");
+// on phones the sidebar is a sheet: close it once something was picked
+$("#sidebar").addEventListener("click", (e) => { if (phoneMQ.matches && !e.target.closest(".x") && e.target.closest(".tab, #nav button, #new-tab, #open-settings, #brand")) setTimeout(() => el.app.classList.add("collapsed"), 0); });
 function toggleBookmark() {
   if (!active.url) return;
   const l = bookmarks(), i = l.findIndex((b) => b.url === active.url);
@@ -735,6 +743,7 @@ $("#menu-btn").onclick = (e) => {
   showMenu(r.right - 230, barBottom() ? r.top - 6 : r.bottom + 6, [
     ...(el.app.dataset.addr === "hide" ? [{ label: "Go to address…", key: "Alt+L", fn: openAddress }] : []),
     { label: "New tab", key: "Alt+T", fn: () => newTab() },
+    ...(phoneMQ.matches ? [{ label: "Reload", off: !active.frame, fn: () => $("#reload").click() }, { label: document.documentElement.dataset.mode === "light" ? "Night mode" : "Day mode", fn: () => $("#mode-btn").click() }] : []),
     { label: "Reopen closed tab", key: "Alt+Shift+T", off: !closed.length, fn: reopenTab },
     "-",
     { label: "Find in page", key: "Alt+F", off: !active.frame, fn: openFind },
@@ -1106,7 +1115,7 @@ $("#plug-url").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.p
 $("#plug-paste-go").onclick = () => { const v = $("#plug-code").value; if (v.trim()) installFromCode(v, "pasted code").then(() => { if (!$("#plug-msg").classList.contains("bad")) $("#plug-code").value = ""; }); };
 
 applyTheme();
-if (matchMedia("(max-width:720px)").matches) el.app.classList.add("collapsed");
+if (phoneMQ.matches) el.app.classList.add("collapsed");
 renderNav();
 newTab();
 const pluginsReady = loadAllPlugins();

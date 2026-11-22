@@ -18,7 +18,7 @@ A self-hosted browser in your browser. Pages are fetched by your server and rend
 - **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists, with a per-site pause
 - **Plugins:** optional add-ons each user installs in their own browser (your own or from others). See [PLUGINS.md](PLUGINS.md)
 - **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
-- **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar (phones get a bottom toolbar by default)
+- **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar. On phones the side panel becomes a Tabs sheet and the toolbar keeps just the essentials
 - **Installable:** works as a PWA, and the app shell opens offline
 
 ## Quick start

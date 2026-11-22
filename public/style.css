@@ -40,8 +40,9 @@ main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;padding:10px
 #stage{flex:1;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:16px;background:var(--surface)}
 #views iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none}
 #views iframe.active{display:block}
-#home{position:absolute;inset:0;overflow:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px;background:radial-gradient(900px 480px at 50% -10%,color-mix(in srgb,var(--accent) 18%,transparent),transparent),var(--surface)}
+#home{position:absolute;inset:0;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;background:radial-gradient(900px 480px at 50% -10%,color-mix(in srgb,var(--accent) 18%,transparent),transparent),var(--surface)}
 #home[hidden]{display:none}
+#home::before,#home::after{content:"";flex:1 1 0;min-height:0} /* centres when there's room, starts at the top when there isn't (no clipped wordmark) */
 .word{font-size:clamp(46px,8vw,88px);font-weight:800;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tag{margin-top:-14px;color:var(--muted)}
 #notice{max-width:560px;padding:10px 14px;border:1px solid #ff6b6b66;border-radius:12px;background:#ff6b6b1a;color:var(--text);font-size:13px}
@@ -367,3 +368,38 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 .pld-info{display:grid;gap:3px;font-size:13px}.pld-info .ver{color:var(--muted)}
 .pld-warn{margin:0;padding:10px 12px;border:1px solid #d99a1f55;border-radius:10px;background:#d99a1f1f;font-size:12.5px}
 .dd-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}.seg[hidden]{display:none}
+
+/* ---- 0.8: polish for every size ---- */
+@supports (height:100dvh){html,body{height:100dvh}}
+#scrim{display:none}
+.menu kbd{margin-left:auto}
+@media (hover:none),(pointer:coarse){.menu kbd{display:none}.menu .mi{min-height:44px}}
+@media (max-height:560px){#home{gap:14px;padding:16px}.tag{display:none}.word{font-size:clamp(34px,7vw,56px)}#home-q{height:46px}}
+
+/* phones (and landscape phones): the side panel is a bottom sheet behind a "Tabs" button; the bar keeps only what you use every minute */
+@media (max-width:720px), (max-height:480px) and (pointer:coarse){
+  #toggle svg{display:none}
+  #toggle::before{content:attr(data-n);display:grid;place-items:center;box-sizing:border-box;min-width:23px;height:23px;padding:0 4px;border:2px solid currentColor;border-radius:7px;font-size:12px;font-weight:700;line-height:1}
+  #bar #reload,#bar #mode-btn{display:none}
+  #scrim{display:block;position:fixed;inset:0;z-index:19;background:#000a;transition:opacity .2s}
+  #app.collapsed #scrim{opacity:0;pointer-events:none}
+  #sidebar{position:fixed;z-index:20;inset:auto 0 0 0;width:auto;max-height:min(82dvh,680px);margin:0;gap:10px;padding:22px 14px calc(14px + env(safe-area-inset-bottom));border:1px solid var(--border);border-bottom:0;border-radius:22px 22px 0 0;background:var(--side);box-shadow:0 -24px 60px #000a;transform:none;transition:transform .24s cubic-bezier(.2,.8,.2,1),visibility 0s}
+  #sidebar::before{content:"";position:absolute;top:8px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:4px;background:var(--border)}
+  #app.collapsed #sidebar{margin-left:0;transform:translateY(106%);visibility:hidden;transition:transform .24s cubic-bezier(.2,.8,.2,1),visibility 0s .24s;box-shadow:none}
+  #sidebar .brand{display:none}
+  #new-tab{order:3;justify-content:center;padding:12px}
+  #nav{order:1}
+  #tablist{order:2;min-height:64px}
+  .side-foot{order:4}
+  .tab{padding:11px 12px}
+  #tablist,#sidebar{scrollbar-width:none}
+  /* home: fluid tiles instead of 2 fixed columns */
+  #home{padding:18px 14px;gap:18px}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:10px;width:100%}
+  .tile{padding:24px 4px 12px}.tile span{max-width:100%;padding:0 4px}
+  .tile .tb{top:3px;right:3px}.tile .tb button{width:22px;height:22px}
+  .tile.add{padding:12px 4px}
+  .widgets{grid-template-columns:1fr}
+}
+@media (hover:none),(pointer:coarse){.tab .x{opacity:1}}
+@media (prefers-reduced-motion:reduce){#sidebar,#scrim{transition:none!important}}
