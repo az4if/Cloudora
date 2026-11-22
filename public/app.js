@@ -24,6 +24,9 @@ const ICONS = {
   star: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
   trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
+  play: "M6 4l14 8-14 8z", book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5",
+  rss: "M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M5 19h.01", cloud: "M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z", code: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+  sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
   puzzle: "M19.4 7.9c-.05.3.06.65.29.88l1.57 1.57a2.4 2.4 0 0 1 0 3.4l-1.6 1.6a1 1 0 0 1-.84.28c-.47-.07-.8-.48-.97-.93a2.5 2.5 0 1 0-3.21 3.21c.45.17.86.5.93.97a1 1 0 0 1-.28.84l-1.6 1.6a2.4 2.4 0 0 1-3.4 0l-1.57-1.57a1 1 0 0 0-.88-.29c-.49.07-.84.5-1.02.97a2.5 2.5 0 1 1-3.24-3.24c.46-.18.9-.53.97-1.02a1 1 0 0 0-.29-.88L2 13.4a2.4 2.4 0 0 1 0-3.4l1.53-1.53c.24-.24.58-.35.92-.3.51.08.88.53 1.07 1.01a2.5 2.5 0 1 0 3.26-3.26c-.48-.2-.93-.56-1.01-1.07-.05-.34.06-.68.3-.92L9.6 2.4a2.4 2.4 0 0 1 3.4 0l1.57 1.57c.23.23.56.34.88.29.49-.07.84-.5 1.02-.97a2.5 2.5 0 1 1 3.24 3.24c-.46.18-.9.53-.97 1.02z",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
@@ -196,7 +199,7 @@ function render() {
     if (!routing && !discKey.startsWith(active.page + "|")) { $("#d-q").value = ""; leaveViews(); }
     showDiscover(active.page, $("#d-q").value.trim());
   }
-  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", blank && b.dataset.page === active.page));
+  document.querySelectorAll("#nav button, #applist .app").forEach((b) => b.classList.toggle("on", blank && b.dataset.page === active.page));
   if (document.activeElement !== el.addr) el.addr.value = active.url;
   el.star.classList.toggle("on", !!active.url && bookmarks().some((b) => b.url === active.url));
   document.title = active.url ? active.title + " · Cloudora" : "Cloudora";
@@ -342,7 +345,7 @@ new MutationObserver(() => {
   const open = !el.app.classList.contains("collapsed"), sb = $("#sidebar");
   $("#toggle").setAttribute("aria-expanded", String(open));
   if (!phoneMQ.matches) return;
-  if (open) (sb.querySelector("#nav button.on") || sb.querySelector("#nav button") || sb.querySelector("#new-tab"))?.focus({ preventScroll: true });
+  if (open) (sb.querySelector("#nav button.on, #applist .app.on") || sb.querySelector("#nav button") || sb.querySelector("#new-tab"))?.focus({ preventScroll: true });
   else if (sb.contains(document.activeElement)) $("#toggle").focus({ preventScroll: true });
 }).observe(el.app, { attributes: true, attributeFilter: ["class"] });
 $("#toggle").setAttribute("aria-expanded", String(!el.app.classList.contains("collapsed")));
@@ -353,7 +356,7 @@ $("#toggle").setAttribute("aria-expanded", String(!el.app.classList.contains("co
   const end = () => { if (!drag) return; drag = false; sb.style.transition = ""; sb.style.transform = ""; if (dy > 90) el.app.classList.add("collapsed"); dy = 0; };
   sb.addEventListener("touchend", end); sb.addEventListener("touchcancel", end); }
 // on phones the sidebar is a sheet: close it once something was picked
-$("#sidebar").addEventListener("click", (e) => { if (phoneMQ.matches && !e.target.closest(".x") && e.target.closest(".tab, #nav button, #new-tab, #open-settings, #brand")) setTimeout(() => el.app.classList.add("collapsed"), 0); });
+$("#sidebar").addEventListener("click", (e) => { if (phoneMQ.matches && !e.target.closest(".x") && e.target.closest(".tab, #nav button, #applist .app, #new-tab, #open-settings, #open-plugins, #brand")) setTimeout(() => el.app.classList.add("collapsed"), 0); });
 function toggleBookmark() {
   if (!active.url) return;
   const l = bookmarks(), i = l.findIndex((b) => b.url === active.url);
@@ -545,6 +548,7 @@ $("#set-nav").addEventListener("keydown", (e) => {
 function openSettings(tab) { drawSettings(); showPane(tab || db.get("settingsTab", "appearance")); $("#settings").hidden = false; document.querySelector("#set-nav [aria-selected=true]").focus(); }
 const closeSettings = () => { closeDD(); $("#settings").hidden = true; };
 $("#open-settings").onclick = () => openSettings();
+$("#open-plugins").onclick = () => openSettings("plugins");
 $("#close-settings").onclick = closeSettings;
 $("#settings").addEventListener("click", (e) => { if (e.target.id === "settings") closeSettings(); });
 
@@ -650,12 +654,14 @@ function openPage(p) {
   else newTab(null, p);
   nav(p);
 }
-// nav buttons: Home, one per plugin page, History
+// the sidebar has two parts: the built-in pages (Home, Bookmarks, History) and, below the tabs, a Plugins section with one entry per plugin page
 function renderNav() {
-  const order = ["home", ...[...pages.values()].filter((x) => !x.builtin && x.nav !== false).map((x) => x.id), "bookmarks", "history"];
-  $("#nav").innerHTML = order.map((id) => `<button data-page="${esc(id)}">${esc(id === "home" ? "Home" : PAGE_TITLES[id])}</button>`).join("");
-  $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
-  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", active && !active.url && b.dataset.page === active.page));
+  $("#nav").innerHTML = ["home", "bookmarks", "history"].map((id) => `<button data-page="${id}">${id === "home" ? "Home" : PAGE_TITLES[id]}</button>`).join("");
+  const plug = [...pages.values()].filter((x) => !x.builtin && x.nav !== false);
+  $("#apps").hidden = !plug.length;
+  $("#applist").innerHTML = plug.map((x) => `<button type="button" class="app" data-page="${esc(x.id)}" title="${esc(PAGE_TITLES[x.id])}"><span class="appi${ICONS[x.icon] ? "" : " ltr"}">${ICONS[x.icon] ? ic(x.icon) : esc([...PAGE_TITLES[x.id]][0].toUpperCase())}</span><span class="apn">${esc(PAGE_TITLES[x.id])}</span></button>`).join("");
+  document.querySelectorAll("#nav button, #applist .app").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
+  document.querySelectorAll("#nav button, #applist .app").forEach((b) => b.classList.toggle("on", active && !active.url && b.dataset.page === active.page));
 }
 // logo -> home: a blank tab becomes the home page; from a website, jump to an open home tab (or make one)
 $("#brand").onclick = () => {
@@ -1041,13 +1047,13 @@ function makeApi(rec) {
   const id = rec.row.id, off = (fn) => rec.off.push(fn);
   return {
     id, version: 2, get coreVersion() { return coreVer; },
-    // add a page: { id, title, list(q, ctx), route?(parts, ctx), leave?(), open?(cardId), placeholder?, search?, nav? } or a link-style { id, title, action() }
+    // add a page: { id, title, icon?, list(q, ctx), route?(parts, ctx), leave?(), open?(cardId), placeholder?, search?, nav? } or a link-style { id, title, action() }
     page(def) {
       if (!def || typeof def.id !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(def.id)) throw new Error("api.page: id must be lowercase letters, digits and dashes");
       if (def.id === "home" || def.id === "history" || (pages.has(def.id) && pages.get(def.id).owner !== id)) throw new Error(`api.page: "${def.id}" is already taken`);
       if (typeof def.title !== "string" || !def.title.trim()) throw new Error("api.page: title is required");
       if (typeof def.list !== "function" && typeof def.action !== "function") throw new Error("api.page: give the page a list() or an action()");
-      pages.set(def.id, { ...def, owner: id }); PAGE_TITLES[def.id] = def.title.trim().slice(0, 24);
+      pages.set(def.id, { ...def, icon: typeof def.icon === "string" ? def.icon : "", owner: id }); PAGE_TITLES[def.id] = def.title.trim().slice(0, 24);
       renderNav();
       off(() => {
         if (active && !active.url && active.page === def.id) leaveViews();

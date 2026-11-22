@@ -34,7 +34,8 @@ window.setFavicon=m=>{const c=m==="light"?"black":"white";document.querySelector
     <button id="new-tab" data-ic="plus">New tab</button>
     <nav id="nav"></nav>
     <div id="tablist"></div>
-    <div class="side-foot"><span id="status">Connecting…</span><button class="ghost" id="open-settings" title="Settings" data-ic="sliders"></button></div>
+    <section id="apps" aria-label="Plugins" hidden><div class="apps-h">Plugins</div><div id="applist"></div></section>
+    <div class="side-foot"><span id="status">Connecting…</span><span class="foot-btns"><button class="ghost" id="open-plugins" title="Plugins" aria-label="Plugins" data-ic="puzzle"></button><button class="ghost" id="open-settings" title="Settings" data-ic="sliders"></button></span></div>
   </aside>
   <main>
     <form id="bar" autocomplete="off">

@@ -76,10 +76,13 @@ Size limit 1.5 MB. The file is an ES module; `export default function (api) {}` 
 
 ### Pages
 
+Built-in pages (Home, Bookmarks, History) sit at the top of the sidebar. Every plugin page gets its own entry in a **Plugins** section below the tabs (an icon grid inside the phone sheet), and the puzzle button in the sidebar footer opens Settings → Plugins.
+
 ```js
 api.page({
   id: "notes",             // route: #notes
   title: "Notes",          // sidebar label
+  icon: "sparkle",         // optional icon name (see api.ui.icons); falls back to the first letter of the title
   placeholder: "Search…",  // search box text
   search: true,            // false hides the search box
   nav: true,               // false hides the sidebar button

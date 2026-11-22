@@ -385,6 +385,7 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
   #scrim{display:block;position:fixed;inset:0;z-index:19;background:#000a;transition:opacity .2s}
   #app.collapsed #scrim{opacity:0;pointer-events:none}
   #sidebar{position:fixed;z-index:20;inset:auto 0 0 0;width:auto;max-height:min(82dvh,680px);margin:0;gap:10px;padding:22px 14px calc(14px + env(safe-area-inset-bottom));border:1px solid var(--border);border-bottom:0;border-radius:22px 22px 0 0;background:var(--side);box-shadow:0 -24px 60px #000a;transform:none;transition:transform .24s cubic-bezier(.2,.8,.2,1),visibility 0s}
+  #sidebar{overflow-y:auto;overscroll-behavior:contain}
   #sidebar::before{content:"";position:absolute;top:8px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:4px;background:var(--border)}
   #app.collapsed #sidebar{margin-left:0;transform:translateY(106%);visibility:hidden;transition:transform .24s cubic-bezier(.2,.8,.2,1),visibility 0s .24s;box-shadow:none}
   #sidebar .brand{display:none}
@@ -413,3 +414,26 @@ body:has(#app[data-bar=bottom]) #toast{bottom:78px}
 #upd[hidden]{display:none}
 body:has(#app[data-bar=bottom]) #upd{bottom:78px}
 @media (max-width:420px){#upd span{flex:1;min-width:0}}
+
+/* sidebar: built-in pages on top, plugins in their own section below the tabs */
+#apps{display:grid;gap:6px;flex:none;padding-top:10px;border-top:1px solid var(--border)}
+.apps-h{padding:0 6px;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+#applist{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow-y:auto;scrollbar-width:none}
+.app{display:flex;align-items:center;gap:10px;min-width:0;padding:6px 8px;border:1px solid transparent;border-radius:11px;background:none;color:var(--muted);text-align:left;font-size:13px}
+.app:hover{background:var(--surface);color:var(--text)}
+.app.on{background:var(--surface2);border-color:var(--border);color:var(--text)}
+.appi{display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:8px;background:var(--surface2)}
+.app.on .appi{background:var(--surface)}
+.appi svg{width:15px;height:15px}
+.appi.ltr{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on-accent,#0b0b0d);font-size:12px;font-weight:700}
+.apn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.foot-btns{display:flex;gap:2px}
+@media (max-width:720px), (max-height:480px) and (pointer:coarse){
+  #apps{order:3;padding-top:12px}
+  #new-tab{order:4}.side-foot{order:5}
+  #applist{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px;max-height:none;overflow:visible}
+  .app{flex-direction:column;justify-content:center;gap:7px;padding:12px 4px 10px;border-color:var(--border);border-radius:14px;background:var(--surface);color:var(--text);text-align:center;font-size:12px}
+  .app.on{border-color:var(--accent)}
+  .appi{width:36px;height:36px;border-radius:12px}.appi svg{width:19px;height:19px}.appi.ltr{font-size:15px}
+  .apn{max-width:100%}
+}
