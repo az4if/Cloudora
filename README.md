@@ -14,8 +14,8 @@ A self-hosted browser in your browser. Pages are fetched by your server and rend
 
 ## Features
 
-- **Browser:** tabs, bookmarks, history, find in page, address-bar suggestions, keyboard shortcuts, editable home shortcuts
-- **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists, with a per-site pause
+- **Browser:** tabs, bookmarks, history, find in page, address-bar suggestions, keyboard shortcuts, editable home shortcuts, backup and restore
+- **Ad & tracker blocking:** EasyList, EasyPrivacy and uBlock Origin lists (refreshed weekly), with a per-site pause
 - **Plugins:** optional add-ons each user installs in their own browser (your own or from others). See [PLUGINS.md](PLUGINS.md)
 - **Real-browser fetching:** optional Chrome/Firefox/Safari TLS fingerprint via `curl_cffi`
 - **Themes & layout:** auto / light / dark, accent presets or any custom colour; toolbar at the top or bottom, optional address bar. On phones the side panel becomes a Tabs sheet and the toolbar keeps just the essentials
@@ -50,6 +50,7 @@ Copy `.env.example` to `.env` and edit it, or set the variables in your host's d
 | `CLOUDORA_IMPERSONATE=0` | Turn off real-browser fetching |
 | `CURL_CFFI=0` | Never use `curl_cffi` for upstream API requests |
 | `UPSTREAM_UA` | Override the user agent for server-side requests |
+| `CLOUDORA_FILTER_UPDATE=0` | Don't refresh the ad-block lists automatically (they update weekly by default) |
 | `CLOUDORA_ALLOW_LOCAL=1` | Let the tunnel reach localhost/LAN. **Local testing only, never on a public server** |
 
 ## Plugins

@@ -11,6 +11,7 @@ import { libcurlPath } from "@mercuryworkshop/libcurl-transport";
 import { baremuxPath } from "@mercuryworkshop/bare-mux/node";
 import { upstream, curlCffiAvailable } from "./upstream.js";
 import { Impersonator } from "./impersonate.js";
+import { startFilterUpdates } from "./filters.js";
 
 const hlsPath = dirname(createRequire(import.meta.url).resolve("hls.js"));
 const publicPath = resolve(fileURLToPath(new URL("../public/", import.meta.url)));
@@ -35,6 +36,8 @@ const impersonateOn = impersonator.available();
 impersonateOn.then((ok) => { if (ok) impersonator.start().catch((e) => console.warn("[cloudora] real-browser fetcher failed to start:", e.message)); });
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+// changes whenever the app files do, so open tabs can tell a new version was deployed even if the number didn't change
+const buildId = () => { try { return String(Math.max(...["index.html", "app.js", "plugins.js", "style.css", "sw.js"].map((f) => statSync(join(publicPath, f)).mtimeMs)) | 0); } catch { return ""; } };
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -112,7 +115,7 @@ const server = createServer((req, res) => {
   res.setHeader("Vary", "User-Agent");
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/proxy") return impersonator.handle(req, res);
-  if (u.pathname === "/api/config") return impersonateOn.then((imp) => { res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ impersonate: imp, version: VERSION })); });
+  if (u.pathname === "/api/config") return impersonateOn.then((imp) => { res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ impersonate: imp, version: VERSION, build: buildId() })); });
   if (u.pathname === "/api/health") { res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ ok: true, adblock: true })); }
   if (u.pathname === "/api/suggest" && req.method === "GET") return suggest(res, u.searchParams.get("q") || "");
   let file = null;
@@ -131,5 +134,6 @@ server.on("upgrade", (req, socket, head) => {
 
 const port = Number(process.env.PORT) || 8080;
 server.listen(port, "0.0.0.0", () => console.log(`Cloudora running: http://localhost:${port}`));
+startFilterUpdates({ root: resolve(fileURLToPath(new URL("..", import.meta.url))), liveDir: join(publicPath, "adblock") });
 
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { impersonator.stop(); server.close(() => process.exit(0)); });

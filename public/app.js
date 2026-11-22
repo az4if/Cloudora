@@ -44,7 +44,7 @@ const prefs = Object.assign({ adblock: true, allow: [], restore: true, history: 
 if (prefs.theme.mode === "amoled") prefs.theme.mode = "dark"; // AMOLED is now just Dark
 const savePrefs = () => db.set("prefs", prefs);
 document.documentElement.classList.toggle("noglow", !prefs.glow);
-const PAGE_TITLES = { home: "New tab", history: "History" }; // plugins add their own pages (see the plugin runtime below)
+const PAGE_TITLES = { home: "New tab", bookmarks: "Bookmarks", history: "History" }; // plugins add their own pages (see the plugin runtime below)
 const AD_CSS = 'ins.adsbygoogle,.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.ad-slot,.ad-wrapper,.advertisement,.sponsored-ad,.taboola,[id^="taboola"],[class*="outbrain"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adnxs"],iframe[src*="adsystem"],#ad,#ads,.ads{display:none!important}';
 const rawHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
 const paused = (u) => { const h = rawHost(u); return !!h && prefs.allow.some((d) => h === d || h.endsWith("." + d)); };
@@ -83,14 +83,14 @@ async function boot() {
   await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   bareConn = new BareMux.BareMuxConnection("/baremux/worker.js");
-  try { const cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); serverImpersonate = !!cfg.impersonate; if (cfg.version) { $("#ver").textContent = "Version " + cfg.version; coreVer = cfg.version; } } catch {}
+  try { const cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); serverImpersonate = !!cfg.impersonate; builtWith = cfg.build || ""; if (cfg.version) { $("#ver").textContent = "Version " + cfg.version; coreVer = cfg.version; } } catch {}
   await applyTransport();
   ready = true; netGate.res();
   syncAdblock();
 }
 // HTTP goes through the server's curl_cffi fetcher (real Chrome/Firefox/Safari TLS fingerprint) when the server has it and the
 // setting is on; otherwise through libcurl.js in this browser. WebSockets always use the Wisp tunnel.
-let bareConn = null, serverImpersonate = false;
+let bareConn = null, serverImpersonate = false, builtWith = "";
 async function applyTransport() {
   const real = serverImpersonate && prefs.impersonate;
   const want = real ? "/transport-impersonate.mjs" : "/libcurl/index.mjs";
@@ -308,7 +308,12 @@ function applyLayout() {
   el.app.dataset.addr = prefs.addrbar === "auto" ? (phone ? "hide" : "show") : prefs.addrbar;
 }
 const barBottom = () => el.app.dataset.bar === "bottom";
-const homeHint = () => { const q = $("#home-q"); if (q) q.placeholder = phoneMQ.matches ? "Search or enter address" : "Search the web or type a URL"; };
+const homeHint = () => {
+  const phone = phoneMQ.matches, q = $("#home-q"), sb = $("#sidebar");
+  if (q) q.placeholder = phone ? "Search or enter address" : "Search the web or type a URL";
+  $("#toggle").title = phone ? "Tabs" : "Sidebar"; $("#toggle").setAttribute("aria-label", phone ? "Tabs" : "Sidebar");
+  if (phone) { sb.setAttribute("role", "dialog"); sb.setAttribute("aria-modal", "true"); } else { sb.setAttribute("role", "complementary"); sb.removeAttribute("aria-modal"); }
+};
 phoneMQ.addEventListener("change", () => { applyLayout(); homeHint(); if (phoneMQ.matches) el.app.classList.add("collapsed"); });
 homeHint();
 applyLayout();
@@ -331,6 +336,22 @@ $("#reload").onclick = () => { if (active.frame) { active.loading = true; active
 $("#new-tab").onclick = () => newTab();
 $("#toggle").onclick = () => el.app.classList.toggle("collapsed");
 $("#scrim").onclick = () => el.app.classList.add("collapsed");
+$("#toggle").setAttribute("aria-controls", "sidebar");
+// keep aria-expanded right, and on phones move focus into the sheet when it opens and back to the button when it closes
+new MutationObserver(() => {
+  const open = !el.app.classList.contains("collapsed"), sb = $("#sidebar");
+  $("#toggle").setAttribute("aria-expanded", String(open));
+  if (!phoneMQ.matches) return;
+  if (open) (sb.querySelector("#nav button.on") || sb.querySelector("#nav button") || sb.querySelector("#new-tab"))?.focus({ preventScroll: true });
+  else if (sb.contains(document.activeElement)) $("#toggle").focus({ preventScroll: true });
+}).observe(el.app, { attributes: true, attributeFilter: ["class"] });
+$("#toggle").setAttribute("aria-expanded", String(!el.app.classList.contains("collapsed")));
+// swipe the tabs sheet down to close it
+{ const sb = $("#sidebar"); let sy = 0, dy = 0, drag = false;
+  sb.addEventListener("touchstart", (e) => { const sc = e.target.closest("#tablist"); if (!phoneMQ.matches || e.touches.length !== 1 || (sc && sc.scrollTop > 0)) return; sy = e.touches[0].clientY; dy = 0; drag = true; }, { passive: true });
+  sb.addEventListener("touchmove", (e) => { if (!drag) return; dy = Math.max(0, e.touches[0].clientY - sy); if (dy) { sb.style.transition = "none"; sb.style.transform = `translateY(${dy}px)`; } }, { passive: true });
+  const end = () => { if (!drag) return; drag = false; sb.style.transition = ""; sb.style.transform = ""; if (dy > 90) el.app.classList.add("collapsed"); dy = 0; };
+  sb.addEventListener("touchend", end); sb.addEventListener("touchcancel", end); }
 // on phones the sidebar is a sheet: close it once something was picked
 $("#sidebar").addEventListener("click", (e) => { if (phoneMQ.matches && !e.target.closest(".x") && e.target.closest(".tab, #nav button, #new-tab, #open-settings, #brand")) setTimeout(() => el.app.classList.add("collapsed"), 0); });
 function toggleBookmark() {
@@ -345,12 +366,12 @@ function onKey(e) {
   if (e.altKey && !e.ctrlKey && !e.metaKey) {
     const c = e.code, num = /^Digit([1-9])$/.exec(c);
     const act = e.shiftKey && c === "KeyT" ? reopenTab : c === "KeyT" ? () => newTab() : c === "KeyW" ? () => closeTab(active) : c === "KeyL" ? openAddress
-      : c === "KeyF" ? openFind : c === "KeyH" ? () => openPage("history") : c === "KeyD" ? toggleBookmark : c === "KeyR" ? () => $("#reload").click()
+      : c === "KeyF" ? openFind : c === "KeyH" ? () => openPage("history") : c === "KeyB" ? () => openPage("bookmarks") : c === "KeyD" ? toggleBookmark : c === "KeyR" ? () => $("#reload").click()
       : c === "ArrowLeft" ? () => active.frame?.back() : c === "ArrowRight" ? () => active.frame?.forward()
       : c === "Equal" || c === "NumpadAdd" ? () => zoomBy(1) : c === "Minus" || c === "NumpadSubtract" ? () => zoomBy(-1) : c === "Digit0" || c === "Numpad0" ? () => zoomBy(0)
       : num ? () => { const t = num[1] === "9" ? tabs[tabs.length - 1] : tabs[+num[1] - 1]; if (t) select(t); } : null;
     if (act) { e.preventDefault(); act(); }
-  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#pld").hidden) return closePld(false); if (!$("#scd").hidden) return closeShortcut(); if (!$("#settings").hidden) return closeSettings(); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
+  } else if (e.key === "Escape") { if (closeDD()) return; if (!$("#pld").hidden) return closePld(false); if (!$("#scd").hidden) return closeShortcut(); if (!$("#settings").hidden) return closeSettings(); if (phoneMQ.matches && !el.app.classList.contains("collapsed")) return el.app.classList.add("collapsed"); closeTop(); closeFloating(); if (!$("#findbar").hidden) closeFind(); }
 }
 document.addEventListener("keydown", onKey);
 
@@ -454,6 +475,56 @@ document.querySelectorAll(".seg[data-k]").forEach((g) => g.addEventListener("cli
 }));
 armed($("#clear-hist"), "Clear", () => { db.set("history", []); refreshDiscover("history", true); drawSettings(); toast("History cleared"); });
 armed($("#reset-sc"), "Reset", () => { db.set("shortcuts", DEFAULT_TILES.map((x) => ({ ...x }))); render(); drawSettings(); toast("Shortcuts reset"); });
+// ---- backup / restore: one JSON file with everything that lives in this browser except history ----
+const BK_SKIP = /^cloudora:(history|session|vars)$/;
+const BK_MAX = 30 * 1024 * 1024;
+let pendingBackup = null;
+async function backupSave() {
+  const data = {};
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith("cloudora:") && !BK_SKIP.test(k)) data[k] = localStorage.getItem(k); } } catch {}
+  const plugins = await CloudoraPlugins.store.list().catch(() => []);
+  const file = { cloudora: "backup", v: 1, app: coreVer, created: new Date().toISOString(), data, plugins };
+  const a = document.createElement("a"), url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: "application/json" }));
+  a.href = url; a.download = `cloudora-backup-${file.created.slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("Backup saved");
+}
+// returns { data, plugins } or throws a readable error; nothing is applied here
+function backupParse(text) {
+  if (text.length > BK_MAX) throw new Error("That file is too big to be a Cloudora backup.");
+  let j; try { j = JSON.parse(text); } catch { throw new Error("That isn't a Cloudora backup file."); }
+  if (!j || j.cloudora !== "backup" || j.v !== 1 || !j.data || typeof j.data !== "object" || Array.isArray(j.data)) throw new Error("That isn't a Cloudora backup file.");
+  const data = {};
+  for (const [k, v] of Object.entries(j.data)) { if (!k.startsWith("cloudora:") || BK_SKIP.test(k) || typeof v !== "string") continue; data[k] = v; }
+  const plugins = [];
+  for (const r of Array.isArray(j.plugins) ? j.plugins.slice(0, 100) : []) {
+    const m = r && typeof r.code === "string" ? CloudoraPlugins.parseManifest(r.code) : null;
+    if (!m || !m.ok || m.manifest.id !== r.id) throw new Error("The backup contains a plugin that isn't valid" + (r && r.id ? ` (${String(r.id).slice(0, 32)})` : "") + ".");
+    plugins.push({ id: r.id, manifest: m.manifest, code: r.code, enabled: r.enabled !== false, source: r.source === "url" ? "url" : "file", url: typeof r.url === "string" && /^https?:\/\//.test(r.url) ? r.url : "", installedAt: +r.installedAt || Date.now(), updatedAt: +r.updatedAt || Date.now() });
+  }
+  return { data, plugins, created: String(j.created || "").slice(0, 10) };
+}
+async function backupApply(b) {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith("cloudora:") && !BK_SKIP.test(k)) localStorage.removeItem(k); } catch {}
+  for (const [k, v] of Object.entries(b.data)) { try { localStorage.setItem(k, v); } catch {} }
+  for (const r of await CloudoraPlugins.store.list().catch(() => [])) await CloudoraPlugins.store.remove(r.id);
+  for (const r of b.plugins) await CloudoraPlugins.store.put(r);
+  toast("Restored. Reloading…"); setTimeout(() => location.reload(), 600);
+}
+$("#bk-save").onclick = () => backupSave().catch((err) => toast("Couldn't save the backup: " + err.message));
+$("#bk-pick").onclick = () => $("#bk-file").click();
+$("#bk-file").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const msg = $("#bk-msg"), go = $("#bk-apply");
+  pendingBackup = null; go.hidden = true;
+  try {
+    if (f.size > BK_MAX) throw new Error("That file is too big to be a Cloudora backup.");
+    const b = backupParse(await f.text()); pendingBackup = b;
+    const n = Object.keys(b.data).length;
+    msg.textContent = `Backup${b.created ? " from " + b.created : ""}: ${n} saved setting${n === 1 ? "" : "s"} and ${b.plugins.length} plugin${b.plugins.length === 1 ? "" : "s"}. Restoring replaces what you have now${b.plugins.length ? ", and its plugins will run with full access to Cloudora" : ""}.`;
+    msg.classList.remove("bad"); go.hidden = false;
+  } catch (err) { msg.textContent = err.message; msg.classList.add("bad"); }
+};
+armed($("#bk-apply"), "Replace my data", () => { const b = pendingBackup; pendingBackup = null; $("#bk-apply").hidden = true; if (b) backupApply(b).catch((err) => toast("Couldn't restore: " + err.message)); });
 armed($("#clear-bm"), "Clear", () => { db.set("bookmarks", []); render(); drawSettings(); toast("Bookmarks cleared"); });
 // sections
 const PANES = ["appearance", "search", "privacy", "browser", "plugins", "about"];
@@ -463,7 +534,7 @@ function showPane(name) {
   document.querySelectorAll("#set-nav [data-tab]").forEach((b) => { const on = b.dataset.tab === name; b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; });
   document.querySelectorAll(".pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
   $(".spanes").scrollTop = 0;
-  if (name === "plugins") drawPlugins();
+  if (name === "plugins") { drawPlugins(); checkPluginUpdates(); }
 }
 $("#set-nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) showPane(b.dataset.tab); });
 $("#set-nav").addEventListener("keydown", (e) => {
@@ -558,6 +629,7 @@ el.disc.addEventListener("click", (e) => {
   const t = e.target, d = $("#d-detail");
   for (const h of clickHandlers.slice()) { try { if (h.fn(e) === true) return; } catch (err) { console.error("[cloudora] plugin click handler failed", err); } }
   const hd = t.closest("[data-hdel]"); if (hd) { e.stopPropagation(); return histRemove(+hd.dataset.hdel); }
+  const bd = t.closest("[data-bmdel]"); if (bd) { e.stopPropagation(); db.set("bookmarks", bookmarks().filter((b) => b.url !== bd.dataset.bmdel)); render(); refreshDiscover("bookmarks", true); return toast("Bookmark removed"); }
   const gt = t.closest("[data-goto]"); if (gt) return go(active, gt.dataset.goto);
   const open = t.closest("[data-open]"); if (open) { if (!d.hidden) nav(listHash(active.page), "replace"); return newTab(open.dataset.open); }
   if (t.closest("[data-back]")) return back();
@@ -580,7 +652,7 @@ function openPage(p) {
 }
 // nav buttons: Home, one per plugin page, History
 function renderNav() {
-  const order = ["home", ...[...pages.values()].filter((x) => !x.builtin && x.nav !== false).map((x) => x.id), "history"];
+  const order = ["home", ...[...pages.values()].filter((x) => !x.builtin && x.nav !== false).map((x) => x.id), "bookmarks", "history"];
   $("#nav").innerHTML = order.map((id) => `<button data-page="${esc(id)}">${esc(id === "home" ? "Home" : PAGE_TITLES[id])}</button>`).join("");
   $("#nav").querySelectorAll("button").forEach((b) => (b.onclick = () => openPage(b.dataset.page)));
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", active && !active.url && b.dataset.page === active.page));
@@ -688,6 +760,12 @@ pages.set("history", { id: "history", title: "History", builtin: true, placehold
   ctx.render(html + (list.length > 400 ? '<p class="muted">Showing the latest 400.</p>' : ""));
 } });
 
+pages.set("bookmarks", { id: "bookmarks", title: "Bookmarks", builtin: true, placeholder: "Search bookmarks…", async list(q, ctx) {
+  const s = q.toLowerCase(), list = bookmarks().filter((b) => !s || ((b.title || "") + " " + b.url).toLowerCase().includes(s));
+  if (!list.length) return ctx.render(`<p class="muted">${q ? "No matches." : "No bookmarks yet. Tap the ☆ in the toolbar on any page to save it here."}</p>`);
+  ctx.render(list.map((b) => `<div class="hrow" data-goto="${esc(b.url)}">${fav(b.url)}<div class="tx"><b>${esc(b.title || b.url)}</b><small>${esc(b.url)}</small></div><button class="rm xb" data-bmdel="${esc(b.url)}" title="Remove bookmark" aria-label="Remove bookmark">${ic("close")}</button></div>`).join(""));
+} });
+
 // Session restore
 function persistSession() {
   clearTimeout(persistSession.t);
@@ -751,6 +829,7 @@ $("#menu-btn").onclick = (e) => {
     { label: "Zoom out", key: "Alt −", off: !active.frame, fn: () => zoomBy(-1) },
     { label: "Actual size" + (active.zoom !== 1 ? ` (${Math.round(active.zoom * 100)}%)` : ""), key: "Alt+0", off: !active.frame, fn: () => zoomBy(0) },
     "-",
+    { label: "Bookmarks", key: "Alt+B", fn: () => openPage("bookmarks") },
     { label: "History", key: "Alt+H", fn: () => openPage("history") },
     { label: "Settings", fn: () => $("#open-settings").click() },
   ], barBottom());
@@ -927,6 +1006,21 @@ const pluginDb = (id) => ({
   set: (k, v) => db.set(`plugin:${id}:${k}`, v),
   remove: (k) => { try { localStorage.removeItem(`cloudora:plugin:${id}:${k}`); } catch {} },
 });
+// ---- "a new version is ready": the server's build id changes when its app files do ----
+let updShown = false, updDismissed = "", updChecked = 0;
+async function checkNewVersion() {
+  if (updShown || !builtWith || Date.now() - updChecked < 60e3) return;
+  updChecked = Date.now();
+  try {
+    const cfg = await (await fetch("/api/config", { cache: "no-store" })).json();
+    if (cfg.build && cfg.build !== builtWith && cfg.build !== updDismissed) { updShown = true; $("#upd").hidden = false; $("#upd").dataset.build = cfg.build; }
+  } catch {}
+}
+$("#upd-go").onclick = () => location.reload();
+$("#upd-x").onclick = () => { updDismissed = $("#upd").dataset.build || ""; $("#upd").hidden = true; updShown = false; };
+setInterval(checkNewVersion, 30 * 60e3);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkNewVersion(); });
+
 // ---- plugin hooks that reach outside the app UI ----
 const injects = new Map(); // plugin id -> [{ id, matches, css, js }]
 let injectTimer = 0;
@@ -1036,9 +1130,9 @@ async function drawPlugins() {
   if (!rows.length) { box.innerHTML = '<div class="srow"><div class="st"><b>No plugins installed</b><small>Add one below to unlock extra pages.</small></div></div>'; return; }
   box.innerHTML = rows.map((r) => {
     const m = r.manifest, err = pluginErrors.get(r.id), rec = loaded.get(r.id);
-    return `<div class="plug" data-id="${esc(r.id)}"><div class="plug-h"><div class="st"><b>${esc(m.name)} <span class="ver">${esc(m.version)}</span></b><small>${esc(m.description || "No description.")}</small>${err ? `<small class="err">Couldn't start: ${esc(err)}</small>` : ""}</div>
+    return `<div class="plug" data-id="${esc(r.id)}"><div class="plug-h"><div class="st"><b>${esc(m.name)} <span class="ver">${esc(m.version)}</span></b><small>${esc(m.description || "No description.")}</small>${hasUpdate(r) ? `<small class="upd">Update available: ${esc(hasUpdate(r))}</small>` : ""}${err ? `<small class="err">Couldn't start: ${esc(err)}</small>` : ""}</div>
       <button type="button" class="switch${r.enabled ? " on" : ""}" role="switch" aria-checked="${!!r.enabled}" data-pl="toggle" aria-label="Enable ${esc(m.name)}"></button></div>
-      <div class="plug-a">${rec && rec.settings ? '<button type="button" class="btn" data-pl="settings">Settings</button>' : ""}${r.url ? '<button type="button" class="btn" data-pl="update">Check for update</button>' : ""}<button type="button" class="btn danger" data-pl="remove">Remove</button></div>
+      <div class="plug-a">${rec && rec.settings ? '<button type="button" class="btn" data-pl="settings">Settings</button>' : ""}${r.url ? `<button type="button" class="btn${hasUpdate(r) ? " pri" : ""}" data-pl="update">${hasUpdate(r) ? "Update to " + esc(hasUpdate(r)) : "Check for update"}</button>` : ""}<button type="button" class="btn danger" data-pl="remove">Remove</button></div>
       <div class="plug-s" hidden></div></div>`;
   }).join("");
   box.querySelectorAll('[data-pl="remove"]').forEach((b) => armed(b, "Remove", () => removePlugin(b.closest(".plug").dataset.id)));
@@ -1056,8 +1150,32 @@ $("#plug-list").addEventListener("click", async (e) => {
     box.hidden = !box.hidden; if (!box.hidden) { box.innerHTML = ""; try { rec.settings(box); } catch (err) { box.textContent = "Couldn't show settings: " + err.message; } }
     return;
   }
-  if (b.dataset.pl === "update") return installFromUrl(row.url, true);
+  if (b.dataset.pl === "update") { await installFromUrl(row.url, true); pluginUpdates.delete(id); drawPluginDot(); return; }
 });
+// plugins installed from an address: look for a newer version now and then (at most every 12 hours, or when asked)
+const pluginUpdates = new Map(); // id -> newer version string
+const hasUpdate = (r) => { const v = pluginUpdates.get(r.id); return v && CloudoraPlugins.cmpVersion(v, r.manifest.version) > 0 ? v : ""; };
+function drawPluginDot() {
+  CloudoraPlugins.store.list().then((rows) => { const n = rows.filter(hasUpdate).length; const b = document.querySelector('#set-nav [data-tab="plugins"]'); if (b) { b.classList.toggle("dot", n > 0); b.title = n ? `${n} plugin update${n > 1 ? "s" : ""} available` : ""; } }).catch(() => {});
+}
+async function checkPluginUpdates(force = false) {
+  if (SAFE_MODE) return;
+  const last = +(localStorage.getItem("cloudora:plugin-check") || 0);
+  if (!force && Date.now() - last < 12 * 3600e3) return drawPluginDot();
+  try { localStorage.setItem("cloudora:plugin-check", String(Date.now())); } catch {}
+  const rows = (await CloudoraPlugins.store.list().catch(() => [])).filter((r) => r.url);
+  await Promise.all(rows.map(async (r) => {
+    try {
+      const resp = await Promise.race([coreFetch(r.url, { headers: { accept: "text/javascript,*/*" } }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000))]);
+      if (!resp.ok) return;
+      const m = CloudoraPlugins.parseManifest(await resp.text());
+      if (m.ok && m.manifest.id === r.id && CloudoraPlugins.cmpVersion(m.manifest.version, r.manifest.version) > 0) pluginUpdates.set(r.id, m.manifest.version); else pluginUpdates.delete(r.id);
+    } catch {}
+  }));
+  const n = rows.filter(hasUpdate).length;
+  if (n && !force) toast(`${n} plugin update${n > 1 ? "s" : ""} available in Settings`);
+  drawPluginDot(); if (!$("#settings").hidden && $("#set-nav [data-tab=plugins][aria-selected=true]")) drawPlugins();
+}
 async function removePlugin(id) {
   stopPlugin(id); pluginErrors.delete(id);
   await CloudoraPlugins.store.remove(id); drawPlugins(); toast("Plugin removed");
@@ -1118,5 +1236,5 @@ applyTheme();
 if (phoneMQ.matches) el.app.classList.add("collapsed");
 renderNav();
 newTab();
-const pluginsReady = loadAllPlugins();
+const pluginsReady = loadAllPlugins().then(() => { setTimeout(() => checkPluginUpdates(), 6000); });
 boot().then(() => pluginsReady).then(restoreSession).then(() => { const u = launchUrl(); if (u) newTab(u); }).then(async () => { try { await applyRoute(true); } finally { routeReady = true; syncHash(); } }).catch((err) => { netGate.rej(err); el.status.textContent = "Offline"; showNotice("Couldn't start the proxy: " + err.message); console.error(err); });

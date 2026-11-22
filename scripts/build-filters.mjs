@@ -3,15 +3,21 @@
 //
 //   node scripts/build-filters.mjs              compile adblock-src/*.txt
 //   node scripts/build-filters.mjs --download   refresh adblock-src/ from the public mirrors first
+//     --strict        with --download: stop (exit 3) unless every list downloaded, so a partial refresh never gets compiled
+//     --src <dir>     read (and download into) this folder instead of adblock-src/
+//     --out <dir>     write the compiled files here instead of public/adblock/
+//     --mirror <url>  replace https://ublockorigin.github.io/uAssetsCDN (or set CLOUDORA_FILTER_MIRROR)
 //
 // Lists are © their authors (GPLv3 / CC BY-SA); see adblock-src/ headers.
 import { mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = join(root, "adblock-src");
-const OUT = join(root, "public", "adblock");
+const flag = (n) => { const i = process.argv.indexOf(n); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[i + 1] : ""; };
+const SRC = flag("--src") ? resolve(flag("--src")) : join(root, "adblock-src");
+const OUT = flag("--out") ? resolve(flag("--out")) : join(root, "public", "adblock");
+const MIRROR = (flag("--mirror") || process.env.CLOUDORA_FILTER_MIRROR || "").replace(/\/+$/, "");
 mkdirSync(OUT, { recursive: true });
 mkdirSync(join(OUT, "res"), { recursive: true });
 
@@ -26,16 +32,19 @@ const LISTS = [
 ];
 
 if (process.argv.includes("--download")) {
-  for (const [file, url] of LISTS) {
+  let failed = 0;
+  for (const [file, url0] of LISTS) {
+    const url = MIRROR ? url0.replace("https://ublockorigin.github.io/uAssetsCDN", MIRROR) : url0;
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, { signal: AbortSignal.timeout(60e3) });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const text = await r.text();
       if (text.length < 5000) throw new Error("suspiciously small");
       writeFileSync(join(SRC, file), text);
       console.log("downloaded", file, (text.length / 1024) | 0, "KB");
-    } catch (e) { console.warn("kept bundled", file, "-", e.message); }
+    } catch (e) { failed++; console.warn("kept bundled", file, "-", e.message); }
   }
+  if (failed && process.argv.includes("--strict")) { console.error(`${failed} list(s) failed to download; nothing was compiled.`); process.exit(3); }
 }
 
 // ---------- network rules ----------
@@ -276,6 +285,6 @@ Object.assign(aliasMap, {
 for (const k of Object.keys(aliasMap)) if (!aliasMap[k]) delete aliasMap[k];
 writeFileSync(join(OUT, "res.json"), JSON.stringify(aliasMap));
 
-writeFileSync(join(OUT, "info.json"), JSON.stringify({ built: out.built, lists: files.map((f) => f.split("/").pop().replace(/\.txt$/, "")), network: stats.net, cosmetic: stats.cosmetic, scriptlets: stats.scriptlet }));
+writeFileSync(join(OUT, "info.json"), JSON.stringify({ built: out.built, lists: files.map((f) => f.split(/[\\/]/).pop().replace(/\.txt$/, "")), network: stats.net, cosmetic: stats.cosmetic, scriptlets: stats.scriptlet }));
 console.log("rules:", stats, "\nnet.json", (sizeOf(out) / 1024) | 0, "KB; cosmetic.json", (sizeOf(cosOut) / 1024) | 0, "KB");
 console.log("generic selectors:", cosmetic.generic.size, "| hosts with selectors:", cosmetic.hosts.size, "| scriptlet hosts:", scriptlets.size, "| plain host blocks:", Object.keys(out.hosts).length, "| token buckets:", Object.keys(out.buckets).length, "| tokenless:", out.generic.length);
