@@ -1,0 +1,42 @@
+# Rebuilds the ad-block lists every day and commits them if they changed.
+# On hosts that deploy from this repo (Render, Railway, Fly.io...) the commit redeploys with the fresh lists.
+name: Update ad-block lists
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # every day at 03:17 UTC
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-filters
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download and rebuild the lists
+        run: node scripts/refresh-filters.mjs
+
+      - name: Commit if the rules changed
+        run: |
+          if git diff --quiet -- public/adblock/net.json public/adblock/cosmetic.json public/adblock/generic.css public/adblock/res.json; then
+            echo "The lists did not change."
+            git checkout -- public/adblock
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/adblock
+          git commit -m "Update ad-block lists ($(date -u +%F))"
+          git push

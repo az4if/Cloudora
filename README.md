@@ -77,6 +77,7 @@ browser ── service worker (Scramjet) ── bare-mux ──┬─ libcurl.js
 ```sh
 npm test                 # unit tests
 npm run build-filters    # rebuild the ad-block lists from adblock-src/
+npm run update-filters   # download the newest lists and rebuild (the GitHub workflow does this daily)
 ```
 
 ## Credits
